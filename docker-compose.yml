@@ -1,0 +1,21 @@
+# Local development services. Run from the repo root: `docker compose up -d`
+services:
+  db:
+    image: postgres:17
+    environment:
+      # Dev-only credentials. Production uses RDS with secrets from SSM, never these.
+      POSTGRES_USER: dibs
+      POSTGRES_PASSWORD: dibs
+      POSTGRES_DB: dibs
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dibs -d dibs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
