@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: dibs
       POSTGRES_DB: dibs
     ports:
-      - "5432:5432"
+      # Host port 5433, not 5432: a native Windows Postgres already owns 5432.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
