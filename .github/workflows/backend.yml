@@ -1,0 +1,74 @@
+# Backend CI: lint, test, and prove the migrations apply to a real Postgres.
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token: this workflow never needs to write to the repo.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that's already going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # Throwaway Postgres for this job only, same version as docker-compose.yml.
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: dibs
+          POSTGRES_PASSWORD: dibs
+          POSTGRES_DB: dibs
+        # Nothing else uses 5432 on a fresh runner, so no need for 5433 here.
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dibs -d dibs"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://dibs:dibs@localhost:5432/dibs
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # --locked fails if uv.lock is out of date with pyproject.toml,
+      # so CI installs exactly what was committed.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Run tests
+        run: uv run pytest
+
+      # Up, all the way down, and up again: catches a broken downgrade()
+      # before it's needed in an emergency.
+      - name: Check migrations
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
