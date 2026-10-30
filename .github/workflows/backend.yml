@@ -4,7 +4,9 @@ name: Backend CI
 on:
   push:
     branches: [main]
+    paths: [backend/**, .github/workflows/backend.yml]
   pull_request:
+    paths: [backend/**, .github/workflows/backend.yml]
 
 # Read-only token: this workflow never needs to write to the repo.
 permissions:
