@@ -46,13 +46,13 @@ class Captain(Base):
     zelle_contact: Mapped[str | None] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    #A random code for the QR URL: 16 bytes is 128 bits, so it can't be guessed (design §15).
+#A random code for the QR URL: 16 bytes is 128 bits, so it can't be guessed (design §15).
 def generate_share_code() -> str:
     return secrets.token_urlsafe(16)
 
 
+#One restaurant bill, paid in full by its Captain.
 class Bill(Base):
-    """One restaurant bill, paid in full by its Captain."""
 
     __tablename__ = "bill"
     __table_args__ = (
