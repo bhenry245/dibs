@@ -46,14 +46,14 @@ class Captain(Base):
     zelle_contact: Mapped[str | None] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-#A random code for the QR URL: 16 bytes is 128 bits, so it can't be guessed (design §15).
+
+# A random code for the QR URL: 16 bytes is 128 bits, so it can't be guessed (design §15).
 def generate_share_code() -> str:
     return secrets.token_urlsafe(16)
 
 
-#One restaurant bill, paid in full by its Captain.
+# One restaurant bill, paid in full by its Captain.
 class Bill(Base):
-
     __tablename__ = "bill"
     __table_args__ = (
         CheckConstraint("status IN ('DRAFT', 'OPEN', 'LOCKED', 'SETTLED')", name="status_valid"),
@@ -125,7 +125,6 @@ class CrewMember(Base):
 
 # One person's dibs on one item, joining LineItem and CrewMember.
 class Claim(Base):
-
     __tablename__ = "claim"
     __table_args__ = (
         # Nobody can claim the same item twice. This also indexes lookups by line_item_id.
