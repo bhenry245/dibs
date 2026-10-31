@@ -48,6 +48,7 @@ Dibs **never handles money**. It only tracks who owes what and nudges people to 
 - As the Captain, I pay the full bill, photograph the receipt, and get a QR code to share with the table.
 - As the Captain, I can review and correct the AI's reading of the receipt before sharing it.
 - As the Captain, I can confirm the tip the AI detected or enter it manually.
+- As the Captain, I can untick "Also split the tip" to cover the whole tip myself. It is ticked by default.
 - As the Captain, I see in real time who has claimed what and what each person owes.
 - As the Captain, I'm warned clearly about any unclaimed items, which default to me unless I assign them.
 - As the Captain, I mark each person as paid when the money arrives.
@@ -126,6 +127,8 @@ All money is stored as **integer cents**. Floats are never used for money.
 
 ### Tax and tip
 Tax and tip are allocated **in proportion to each person's item subtotal**. If your items make up 20% of the subtotal, you pay 20% of the tax and 20% of the tip.
+
+Tax is always split. The tip is split by default, but the Captain can turn that off (`split_tip`) to cover the whole tip themselves.
 
 The tip is read from the receipt when it is present. The Captain confirms it or enters it manually.
 
@@ -286,6 +289,7 @@ erDiagram
         int tax_cents
         int tip_cents
         int total_cents
+        boolean split_tip "default true"
         timestamptz locked_at
         timestamptz created_at
     }
