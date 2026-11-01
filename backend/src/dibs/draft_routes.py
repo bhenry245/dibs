@@ -80,6 +80,7 @@ def receipt_to_details(receipt: Receipt) -> BillDetails:
             restaurant_name=(receipt.restaurant_name or "").strip()[:200] or None,
             tax_cents=max(receipt.tax_cents or 0, 0),
             tip_cents=max(receipt.tip_cents or 0, 0),
+            fees_cents=max(receipt.fees_cents or 0, 0),
             items=[
                 {"description": item.description.strip()[:255], "price_cents": item.price_cents}
                 for item in receipt.items

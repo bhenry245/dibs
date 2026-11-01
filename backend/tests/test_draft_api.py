@@ -25,12 +25,13 @@ READING = {
     "is_receipt": True,
     "restaurant_name": "Luigi's",
     "lines": [
-        {"description": "Burger", "quantity": 1, "line_total_cents": 2000},
-        {"description": "Beer", "quantity": 2, "line_total_cents": 1000},
+        {"description": "Burger", "quantity": 1, "line_total_cents": 2000, "is_addon": False},
+        {"description": "Beer", "quantity": 2, "line_total_cents": 1000, "is_addon": False},
     ],
     "subtotal_cents": 3000,
     "tax_cents": 240,
     "tip_cents": 600,
+    "fees_cents": None,
     "total_cents": 3840,
 }
 
@@ -175,7 +176,7 @@ async def test_mismatches_are_kept_as_warnings_and_not_fixed(
     assert created["draft"]["bill"]["total_cents"] == 3840
     assert created["draft"]["printed_total_cents"] == 9999
     assert created["draft"]["warnings"] == [
-        "The subtotal, tax and tip add up to $38.40, but the receipt's total says $99.99."
+        "The subtotal, tax, tip and fees add up to $38.40, but the receipt's total says $99.99."
     ]
 
 
@@ -208,7 +209,9 @@ async def test_negative_tax_starts_at_zero_with_a_warning(client: AsyncClient, c
 async def test_long_names_are_cut_to_fit(client: AsyncClient, claude: FakeClaude):
     claude.reading = READING | {
         "restaurant_name": "R" * 500,
-        "lines": [{"description": "D" * 500, "quantity": 1, "line_total_cents": 3000}],
+        "lines": [
+            {"description": "D" * 500, "quantity": 1, "line_total_cents": 3000, "is_addon": False}
+        ],
     }
 
     bill = (await scan(client))["draft"]["bill"]
@@ -231,9 +234,9 @@ async def test_impossible_printed_total_is_ignored_rather_than_crashing(
 @pytest.mark.parametrize(
     "lines",
     [
-        [{"description": "Wine", "quantity": 1, "line_total_cents": 10_000_001}],
-        [{"description": "Soda", "quantity": 1, "line_total_cents": 100}] * 201,
-        [{"description": "   ", "quantity": 1, "line_total_cents": 100}],
+        [{"description": "Wine", "quantity": 1, "line_total_cents": 10_000_001, "is_addon": False}],
+        [{"description": "Soda", "quantity": 1, "line_total_cents": 100, "is_addon": False}] * 201,
+        [{"description": "   ", "quantity": 1, "line_total_cents": 100, "is_addon": False}],
     ],
     ids=["price too large", "too many items", "blank name"],
 )
@@ -369,6 +372,26 @@ async def test_scans_older_than_a_day_do_not_count(
     await scan(client)
 
 
+async def test_fees_from_the_receipt_are_on_the_draft_and_in_the_total(
+    client: AsyncClient, claude: FakeClaude
+):
+    claude.reading = READING | {"fees_cents": 311, "total_cents": 4151}
+
+    created = await scan(client)
+
+    bill = created["draft"]["bill"]
+    assert (bill["fees_cents"], bill["total_cents"]) == (311, 4151)
+    assert created["draft"]["warnings"] == []
+
+
+async def test_negative_fees_start_at_zero(client: AsyncClient, claude: FakeClaude):
+    claude.reading = READING | {"fees_cents": -100, "total_cents": None}
+
+    bill = (await scan(client))["draft"]["bill"]
+
+    assert bill["fees_cents"] == 0
+
+
 # --- The crew can't see a draft ---
 
 
@@ -502,6 +525,22 @@ async def test_corrections_follow_the_same_rules_as_a_typed_bill(
     assert response.status_code == 422
     reloaded = await client.get(f"/bills/{code}/draft", headers=auth(created["token"]))
     assert reloaded.json() == created["draft"]
+
+
+async def test_corrections_can_change_fees_and_the_total_follows(
+    client: AsyncClient, claude: FakeClaude
+):
+    created = await scan(client)
+    code = created["draft"]["bill"]["share_code"]
+
+    response = await client.put(
+        f"/bills/{code}/draft",
+        json=CORRECTED | {"fees_cents": 50},
+        headers=auth(created["token"]),
+    )
+
+    assert response.json()["bill"]["fees_cents"] == 50
+    assert response.json()["bill"]["total_cents"] == 2150
 
 
 async def test_bill_typed_by_hand_is_not_a_draft(client: AsyncClient, claude: FakeClaude):

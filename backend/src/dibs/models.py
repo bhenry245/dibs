@@ -62,6 +62,7 @@ class Bill(Base):
             "subtotal_cents >= 0 AND tax_cents >= 0 AND tip_cents >= 0 AND total_cents >= 0",
             name="amounts_not_negative",
         ),
+        CheckConstraint("fees_cents >= 0", name="fees_not_negative"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -78,6 +79,7 @@ class Bill(Base):
     subtotal_cents: Mapped[int] = mapped_column(server_default="0")
     tax_cents: Mapped[int] = mapped_column(server_default="0")
     tip_cents: Mapped[int] = mapped_column(server_default="0")
+    fees_cents: Mapped[int] = mapped_column(server_default="0")
     total_cents: Mapped[int] = mapped_column(server_default="0")
     split_tip: Mapped[bool] = mapped_column(server_default=text("true"))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -100,8 +100,14 @@ function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCapt
           <dl className="flex flex-col gap-1 text-sm text-gray-700">
             <div className="flex justify-between">
               <dt>Your items</dt>
-              <dd>{formatCents(mine.subtotal_cents)}</dd>
+              <dd>{formatCents(mine.claimed_cents)}</dd>
             </div>
+            {mine.unclaimed_cents > 0 && (
+              <div className="flex justify-between">
+                <dt>Unclaimed, counts as yours</dt>
+                <dd>{formatCents(mine.unclaimed_cents)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>Your tax</dt>
               <dd>{formatCents(mine.tax_cents)}</dd>
@@ -110,6 +116,12 @@ function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCapt
               <dt>Your tip</dt>
               <dd>{formatCents(mine.tip_cents)}</dd>
             </div>
+            {mine.fees_cents > 0 && (
+              <div className="flex justify-between">
+                <dt>Your fees</dt>
+                <dd>{formatCents(mine.fees_cents)}</dd>
+              </div>
+            )}
           </dl>
         </>
       )}
@@ -143,6 +155,9 @@ function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
           {isOpen
             ? 'Tap what you had. Tap it again to drop it.'
             : 'This bill is locked, so claims are final.'}
+        </p>
+        <p className="mt-2 text-sm font-medium text-gray-900">
+          At the table: {bill.crew.map((member) => member.name).join(', ')}
         </p>
       </div>
       <ul className="flex flex-col gap-2">

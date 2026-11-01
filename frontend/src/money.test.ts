@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest'
-import { formatCents, parseDollars } from './money.ts'
+import { centsToInput, formatCents, parseDollars } from './money.ts'
+
+test.each([0, 5, 50, 1999, 123456, 10_000_000])('%i cents survives a trip through an input', (cents) => {
+  expect(parseDollars(centsToInput(cents))).toBe(cents)
+})
 
 test.each([
   [0, '$0.00'],

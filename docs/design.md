@@ -125,14 +125,16 @@ All money is stored as **integer cents**. Floats are never used for money.
 - Two people on the nachos with 1 share each split 50/50. Uneven splits need no extra modelling: give one person 2 shares.
 - Receipt lines with a quantity (`3 × Beer  $18.00`) are expanded into separate units (`Beer $6.00` × 3) so people claim whole units.
 
-### Tax and tip
-Tax and tip are allocated **in proportion to each person's item subtotal**. If your items make up 20% of the subtotal, you pay 20% of the tax and 20% of the tip.
+### Tax, tip and fees
+Tax, tip and fees are allocated **in proportion to each person's item subtotal**. If your items make up 20% of the subtotal, you pay 20% of the tax and 20% of the tip.
 
-Tax is always split. The tip is split by default, but the Captain can turn that off (`split_tip`) to cover the whole tip themselves.
+Fees are charges printed below the items that aren't tax or a tip, like a destination fee or service charge.
+
+Tax and fees are always split. The tip is split by default, but the Captain can turn that off (`split_tip`) to cover the whole tip themselves.
 
 The tip is read from the receipt when it is present. The Captain confirms it or enters it manually.
 
-Discounts and service charges on the receipt are treated the same way as tax: allocated in proportion to subtotal. *(Open question, see §16.)*
+Discounts on the receipt are treated the same way as tax: allocated in proportion to subtotal. *(Open question, see §16.)*
 
 ### Rounding: largest remainder method
 Proportional splits produce fractions of a cent. To make shares add up to the total exactly:
@@ -288,6 +290,7 @@ erDiagram
         int subtotal_cents
         int tax_cents
         int tip_cents
+        int fees_cents
         int total_cents
         boolean split_tip "default true"
         timestamptz locked_at
@@ -352,7 +355,7 @@ Notes:
 ## 16. Open questions
 
 1. **Captain auth:** our own magic-link auth, or **AWS Cognito**? Cognito adds AWS experience but more lock-in and setup.
-2. **Discounts and service charges:** allocate them in proportion to subtotal (current plan), or let the Captain choose?
+2. **Discounts:** allocate them in proportion to subtotal (current plan), or let the Captain choose?
 3. **Editing after OPEN:** can the Captain edit items once the crew are claiming? Proposal: yes, but claims on an edited item are cleared and the people affected are notified.
 4. **Domain name.**
 5. **Currencies:** v1 assumes US dollars. Supporting others needs a currency code on each bill, and display and parsing that know each currency's decimals (yen has none).

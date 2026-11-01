@@ -146,6 +146,39 @@ def test_split_bill_captain_with_no_claims_can_still_cover_tip():
     assert result["ana"].total_cents == 1080
 
 
+def test_split_bill_splits_fees_in_proportion_and_counts_them_in_the_total():
+    items = [Item(3000, {"cap": 1}), Item(1000, {"ana": 1})]
+
+    result = split_bill(["cap", "ana"], items, 0, 0, fees_cents=400)
+
+    assert result["cap"].fees_cents == 300
+    assert result["ana"].fees_cents == 100
+    assert result["cap"].total_cents == 3300
+    assert result["ana"].total_cents == 1100
+
+
+def test_split_bill_still_splits_fees_when_captain_covers_the_tip():
+    items = [Item(3000, {"cap": 1}), Item(1000, {"ana": 1})]
+
+    result = split_bill(["cap", "ana"], items, 0, 800, split_tip=False, fees_cents=400)
+
+    assert result["ana"].tip_cents == 0
+    assert result["ana"].fees_cents == 100
+
+
+def test_split_bill_with_fees_adds_up_to_the_bill_exactly():
+    items = [Item(1000, {"cap": 1, "ana": 1, "ben": 1}), Item(1333, {"ana": 1})]
+
+    result = split_bill(["cap", "ana", "ben"], items, 87, 133, fees_cents=311)
+
+    assert sum(person.total_cents for person in result.values()) == 1000 + 1333 + 87 + 133 + 311
+
+
+def test_split_bill_rejects_negative_fees():
+    with pytest.raises(ValueError):
+        split_bill(["cap"], [Item(1000, {"cap": 1})], 0, 0, fees_cents=-1)
+
+
 def test_split_bill_rejects_negative_tip_when_captain_covers_it():
     with pytest.raises(ValueError):
         split_bill(["cap"], [Item(1000, {"cap": 1})], 0, -1, split_tip=False)

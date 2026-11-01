@@ -36,11 +36,16 @@ All amounts are integer cents, so $15.27 is 1527.
   - quantity: the printed quantity, or 1 if there is none.
   - line_total_cents: the price printed on that line. For "3 x Beer $18.00" that is quantity 3 \
 and 1800. If only a unit price is printed, like "3 @ $6.00", still give the line's total.
-  - Unpriced modifiers like "no onions" aren't lines. A priced add-on is its own line.
+  - is_addon: true for a priced modifier that belongs to the line above it, like "coleslaw add on \
+$1.50" printed under a burger. These are often indented or have no quantity. Anything ordered in \
+its own right is false, including sides.
+  - Modifiers with no price or priced at $0.00, like "no onions", aren't lines.
   - A discount or coupon is a line with a negative line_total_cents.
-  - A service charge or other fee that isn't a tip is a line.
 - subtotal_cents, tax_cents, total_cents: as printed, or null if not printed. If several tax lines \
 are printed, add them together for tax_cents.
+- fees_cents: charges printed below the items that aren't tax or a tip, like a destination fee, \
+service charge or delivery fee, added together, or null. These aren't lines. If a combined line \
+like "Total Taxes" includes a fee, tax_cents is only the tax, so nothing is counted twice.
 - tip_cents: the tip written or printed as charged, including automatic gratuity, or null. A table \
 of suggested tips is not a tip.
 - total_cents: the final amount, including the tip if one is written."""
@@ -52,6 +57,7 @@ class ClaudeLine(BaseModel):
     description: str
     quantity: int
     line_total_cents: int
+    is_addon: bool
 
 
 class ClaudeReceipt(BaseModel):
@@ -61,6 +67,7 @@ class ClaudeReceipt(BaseModel):
     subtotal_cents: int | None
     tax_cents: int | None
     tip_cents: int | None
+    fees_cents: int | None
     total_cents: int | None
 
 
@@ -76,6 +83,7 @@ class Receipt(BaseModel):
     subtotal_cents: int | None
     tax_cents: int | None
     tip_cents: int | None
+    fees_cents: int | None
     total_cents: int | None
     warnings: list[str]
     input_tokens: int = 0
@@ -112,6 +120,42 @@ def format_dollars(cents: int) -> str:
     return f"{sign}${dollars:,}.{pennies:02d}"
 
 
+# Folds each add-on into the line it belongs to, so whoever calls dibs on the burger also gets its
+# coleslaw. "Hamburger $19.00" and "coleslaw add on $1.50" become "Hamburger + coleslaw add on
+# $20.50".
+def merge_addons(lines: list[ClaudeLine], warnings: list[str]) -> list[ClaudeLine]:
+    merged: list[ClaudeLine] = []
+    for line in lines:
+        if line.is_addon and line.line_total_cents == 0:
+            # A free modifier changes nothing, and the next add-on still belongs to the same item.
+            continue
+
+        parent = merged[-1] if merged else None
+        # With nothing sensible to attach to, an add-on stands alone so its price isn't lost.
+        if (
+            not line.is_addon
+            or line.line_total_cents < 0
+            or not parent
+            or parent.line_total_cents < 0
+        ):
+            merged.append(line)
+            continue
+
+        combined = parent.model_copy(
+            update={
+                "description": f"{parent.description} + {line.description}",
+                "line_total_cents": parent.line_total_cents + line.line_total_cents,
+            }
+        )
+        merged[-1] = combined
+        if parent.quantity > 1:
+            warnings.append(
+                f'Check "{combined.description}": the add-on\'s price was split across all '
+                f"{parent.quantity}, but it may belong to just one."
+            )
+    return merged
+
+
 # Splits one printed line into what people claim: "3 x Beer $18.00" becomes three $6.00 beers.
 # allocate keeps the prices exact, so 3 for $10.00 becomes $3.34, $3.33 and $3.33.
 def expand_line(line: ClaudeLine, warnings: list[str]) -> list[ReceiptItem]:
@@ -134,7 +178,7 @@ def build_receipt(reading: ClaudeReceipt) -> Receipt:
     warnings: list[str] = []
     items: list[ReceiptItem] = []
     discounts_cents = 0
-    for line in reading.lines:
+    for line in merge_addons(reading.lines, warnings):
         if line.line_total_cents == 0:
             # Nobody needs to claim a free line, like a comped drink. If a real price was misread
             # as zero, the items won't match the subtotal, so it still gets flagged.
@@ -152,7 +196,11 @@ def build_receipt(reading: ClaudeReceipt) -> Receipt:
     if not items:
         raise ReceiptUnreadableError("No items could be read from this receipt.")
 
-    for name, amount in (("tax", reading.tax_cents), ("tip", reading.tip_cents)):
+    for name, amount in (
+        ("tax", reading.tax_cents),
+        ("tip", reading.tip_cents),
+        ("fees total", reading.fees_cents),
+    ):
         if amount is not None and amount < 0:
             warnings.append(f"The {name} reads as {format_dollars(amount)}, so check it.")
 
@@ -168,12 +216,12 @@ def build_receipt(reading: ClaudeReceipt) -> Receipt:
         )
 
     if reading.total_cents is not None:
-        extras = (reading.tax_cents or 0) + (reading.tip_cents or 0)
+        extras = (reading.tax_cents or 0) + (reading.tip_cents or 0) + (reading.fees_cents or 0)
         subtotal = reading.subtotal_cents if reading.subtotal_cents is not None else items_cents
         expected = subtotal + extras
         if reading.total_cents not in (expected, expected + discounts_cents):
             warnings.append(
-                f"The subtotal, tax and tip add up to {format_dollars(expected)}, but the "
+                f"The subtotal, tax, tip and fees add up to {format_dollars(expected)}, but the "
                 f"receipt's total says {format_dollars(reading.total_cents)}."
             )
 
@@ -183,6 +231,7 @@ def build_receipt(reading: ClaudeReceipt) -> Receipt:
         subtotal_cents=reading.subtotal_cents,
         tax_cents=reading.tax_cents,
         tip_cents=reading.tip_cents,
+        fees_cents=reading.fees_cents,
         total_cents=reading.total_cents,
         warnings=warnings,
     )

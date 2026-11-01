@@ -13,6 +13,7 @@ const BILL = {
   subtotal_cents: 3900,
   tax_cents: 312,
   tip_cents: 780,
+  fees_cents: 0,
   total_cents: 4992,
   split_tip: true,
   items: [
@@ -84,6 +85,34 @@ test('shows the bill to someone who just scanned the QR', async () => {
   expect(screen.getByText('$49.92')).toBeInTheDocument()
   expect(screen.getByText('At the table: Brandon')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Join this bill' })).toBeInTheDocument()
+})
+
+test('shows the subtotal, and fees only when there are some', async () => {
+  stubApi()
+
+  renderBillPage()
+
+  expect(await screen.findByText('Subtotal')).toBeInTheDocument()
+  expect(screen.getByText('Subtotal').nextSibling).toHaveTextContent('$39.00')
+  expect(screen.queryByText('Fees')).not.toBeInTheDocument()
+})
+
+test('shows fees on a bill that has them', async () => {
+  stubApi({ bill: { ...BILL, fees_cents: 311 } })
+
+  renderBillPage()
+
+  expect((await screen.findByText('Fees')).nextSibling).toHaveTextContent('$3.11')
+})
+
+test('shows who is at the table above the items before joining', async () => {
+  stubApi()
+
+  renderBillPage()
+
+  const item = await screen.findByText('Burger')
+  const table = screen.getByText('At the table: Brandon')
+  expect(table.compareDocumentPosition(item)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 })
 
 test('a bill with no restaurant name still has a title', async () => {

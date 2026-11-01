@@ -105,6 +105,7 @@ test('creates a bill with amounts in cents and opens the share page', async () =
     restaurant_name: "Luigi's",
     tax_cents: 312,
     tip_cents: 780,
+    fees_cents: 0,
     split_tip: true,
     items: [
       { description: 'Burger', price_cents: 2000 },
@@ -159,6 +160,48 @@ test('unticking the box tells the API the Captain covers the tip', async () => {
   expect(sentBill(fetchMock).split_tip).toBe(false)
 })
 
+test('shows a running subtotal under the items', async () => {
+  const user = userEvent.setup()
+  stubFetch()
+  renderAt('/')
+
+  expect(screen.getByText('Subtotal').nextSibling).toHaveTextContent('$0.00')
+  await user.type(screen.getByLabelText('Price of item 1'), '19.99')
+  await user.click(screen.getByRole('button', { name: 'Add item' }))
+  await user.type(screen.getByLabelText('Price of item 2'), '1.15')
+
+  expect(screen.getByText('Subtotal').nextSibling).toHaveTextContent('$21.14')
+  await user.type(screen.getByLabelText('Price of item 2'), 'x')
+  expect(screen.getByText('Subtotal').nextSibling).toHaveTextContent('Check the prices')
+})
+
+test('sends fees in cents, under the renamed section', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  expect(screen.getByRole('heading', { name: 'Tax, tip, and fees' })).toBeInTheDocument()
+  await fillRequiredFields(user)
+  await user.type(screen.getByLabelText('Fees'), '3.11')
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  await landedOnSharePage()
+  expect(sentBill(fetchMock).fees_cents).toBe(311)
+})
+
+test('tip is the last of the tax, fees and tip fields', () => {
+  stubFetch()
+  renderAt('/')
+
+  const boxes = screen.getAllByRole('textbox')
+
+  expect(boxes.slice(-3)).toEqual([
+    screen.getByLabelText('Tax'),
+    screen.getByLabelText('Fees'),
+    screen.getByLabelText('Tip'),
+  ])
+})
+
 test('removing an item keeps the text in the other rows', async () => {
   const user = userEvent.setup()
   const fetchMock = stubFetch()
@@ -196,8 +239,9 @@ test.each([
     'Enter a valid tax amount, like 3.12.',
   ],
   ['a bad tip', { item: 'Soup', price: '5', tip: '-1' }, 'Enter a valid tip amount, like 7.80.'],
+  ['bad fees', { item: 'Soup', price: '5', fees: 'many' }, 'Enter a valid fees amount, like 3.11.'],
 ])('does not send a bill with %s', async (_name, fields, message) => {
-  const { item, price, tax, tip } = fields as Record<string, string | undefined>
+  const { item, price, tax, tip, fees } = fields as Record<string, string | undefined>
   const user = userEvent.setup()
   const fetchMock = stubFetch()
   renderAt('/')
@@ -208,6 +252,7 @@ test.each([
   if (price) await user.type(screen.getByLabelText('Price of item 1'), price)
   if (tax) await user.type(screen.getByLabelText('Tax'), tax)
   if (tip) await user.type(screen.getByLabelText('Tip'), tip)
+  if (fees) await user.type(screen.getByLabelText('Fees'), fees)
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent(message)

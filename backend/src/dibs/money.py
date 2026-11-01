@@ -78,16 +78,17 @@ class PersonTotal:
     subtotal_cents: int
     tax_cents: int
     tip_cents: int
+    fees_cents: int = 0
 
     @property
     def total_cents(self) -> int:
-        return self.subtotal_cents + self.tax_cents + self.tip_cents
+        return self.subtotal_cents + self.tax_cents + self.tip_cents + self.fees_cents
 
 
 # Work out what each person owes.
 
-# Each item's price is split between its claimers by shares. Tax is then always split in
-# proportion to each person's item subtotal, and the tip is too unless the Captain covers it.
+# Each item's price is split between its claimers by shares. Tax and fees are then always split
+# in proportion to each person's item subtotal, and the tip is too unless the Captain covers it.
 # The order of people is the tie-break order, so the Captain goes first. Every item must
 # already be claimed: unclaimed items are assigned to the Captain before this runs.
 
@@ -97,9 +98,10 @@ class PersonTotal:
 #     tax_cents: The bill's total tax, in cents.
 #     tip_cents: The bill's total tip, in cents.
 #     split_tip: True splits the tip like tax. False puts all of it on the Captain.
+#     fees_cents: The bill's total fees, in cents, like a service charge.
 
 # Returns:
-#     Each person -> a PersonTotal with their item subtotal, tax and tip, all in cents.
+#     Each person -> a PersonTotal with their item subtotal, tax, tip and fees, all in cents.
 
 # Raises:
 #     ValueError: An item has no claimers, is claimed by someone not in people, or has an
@@ -112,6 +114,7 @@ def split_bill[K](
     tax_cents: int,
     tip_cents: int,
     split_tip: bool = True,
+    fees_cents: int = 0,
 ) -> dict[K, PersonTotal]:
     subtotals = dict.fromkeys(people, 0)
     for item in items:
@@ -128,4 +131,8 @@ def split_bill[K](
     # Not splitting the tip means giving the Captain the only non-zero share of it.
     tip_shares = subtotals if split_tip else {person: int(person == people[0]) for person in people}
     tip = allocate(tip_cents, tip_shares)
-    return {person: PersonTotal(subtotals[person], tax[person], tip[person]) for person in people}
+    fees = allocate(fees_cents, subtotals)
+    return {
+        person: PersonTotal(subtotals[person], tax[person], tip[person], fees[person])
+        for person in people
+    }

@@ -66,9 +66,12 @@ function fakeApi({
           return {
             crew_member_id: person.id,
             name: person.name,
+            claimed_cents: subtotal,
+            unclaimed_cents: 0,
             subtotal_cents: subtotal,
             tax_cents: 7,
             tip_cents: 11,
+            fees_cents: 0,
             total_cents: subtotal + 18,
           }
         }),
@@ -84,6 +87,7 @@ function fakeApi({
       subtotal_cents: 3000,
       tax_cents: 240,
       tip_cents: 600,
+      fees_cents: 0,
       total_cents: 3840,
       split_tip: true,
       items: items.map((item, position) => ({
@@ -163,6 +167,18 @@ test('tapping a claimed item drops it, and the empty 204 response is fine', asyn
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
+test('shows who is at the table under the instructions, above the items', async () => {
+  fakeApi()
+  renderAs('ana')
+
+  const burger = await itemButton(/Burger/)
+  const table = screen.getByText('At the table: Brandon, Ana, Ben')
+  const instructions = screen.getByText('Tap what you had. Tap it again to drop it.')
+
+  expect(instructions.compareDocumentPosition(table)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  expect(table.compareDocumentPosition(burger)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+})
+
 test('shows who is on each item in plain words', async () => {
   const { state } = fakeApi()
   state.claims.burger = [
@@ -206,6 +222,69 @@ test('your total comes from the API and changes when you claim something', async
   expect(screen.getByText('Your items').nextSibling).toHaveTextContent('$20.00')
   expect(screen.getByText('Your tax').nextSibling).toHaveTextContent('$0.07')
   expect(screen.getByText('Your tip').nextSibling).toHaveTextContent('$0.11')
+})
+
+test('shows your part of the fees when there are some', async () => {
+  fakeApi({
+    totalsResponse: () =>
+      jsonResponse(200, {
+        people: [
+          {
+            crew_member_id: 'ana',
+            name: 'Ana',
+            claimed_cents: 1000,
+            unclaimed_cents: 0,
+            subtotal_cents: 1000,
+            tax_cents: 0,
+            tip_cents: 0,
+            fees_cents: 31,
+            total_cents: 1031,
+          },
+        ],
+        unclaimed_item_ids: [],
+      }),
+  })
+  renderAs('ana')
+
+  expect((await screen.findByText('Your fees')).nextSibling).toHaveTextContent('$0.31')
+})
+
+test('the Captain sees unclaimed items apart from what they claimed', async () => {
+  fakeApi({
+    totalsResponse: () =>
+      jsonResponse(200, {
+        people: [
+          {
+            crew_member_id: 'cap',
+            name: 'Brandon',
+            claimed_cents: 1400,
+            unclaimed_cents: 8950,
+            subtotal_cents: 10350,
+            tax_cents: 725,
+            tip_cents: 0,
+            fees_cents: 311,
+            total_cents: 11386,
+          },
+        ],
+        unclaimed_item_ids: ['burger'],
+      }),
+  })
+  renderAs('cap')
+
+  expect((await screen.findByText('Your items')).nextSibling).toHaveTextContent('$14.00')
+  expect(screen.getByText('Unclaimed, counts as yours').nextSibling).toHaveTextContent('$89.50')
+  expect(screen.getByRole('heading', { name: 'Your total' }).nextSibling).toHaveTextContent(
+    '$113.86',
+  )
+})
+
+test('nobody sees an unclaimed row when they have none', async () => {
+  fakeApi()
+  renderAs('ana')
+
+  await screen.findByText('Your items')
+
+  expect(screen.queryByText('Unclaimed, counts as yours')).not.toBeInTheDocument()
 })
 
 test('crew are told what they owe, and the bill total stays visible', async () => {
@@ -323,9 +402,12 @@ test('a failed total shows an error and can be tried again', async () => {
               {
                 crew_member_id: 'ana',
                 name: 'Ana',
+                claimed_cents: 0,
+                unclaimed_cents: 0,
                 subtotal_cents: 0,
                 tax_cents: 0,
                 tip_cents: 0,
+                fees_cents: 0,
                 total_cents: 42,
               },
             ],

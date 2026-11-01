@@ -7,7 +7,7 @@ from typing import Annotated, Self
 from pydantic import AfterValidator, BaseModel, EmailStr, Field, StringConstraints, model_validator
 
 # These caps keep a bill's total inside a Postgres integer (about $21 million): 200 items at
-# $100,000 each, plus tax and tip, still fits.
+# $100,000 each, plus tax, tip and fees, still fits.
 MAX_CENTS = 10_000_000
 MAX_ITEMS = 200
 MAX_SHARES = 100
@@ -36,14 +36,17 @@ class BillDetails(BaseModel):
     ) = None
     tax_cents: Cents = 0
     tip_cents: Cents = 0
+    fees_cents: Cents = 0
     split_tip: bool = True
     items: list[LineItemCreate] = Field(min_length=1, max_length=MAX_ITEMS)
 
-    # Tax and tip are split in proportion to item prices, so they need a price to split against.
+    # Tax, tip and fees are split in proportion to item prices, so they need a price to split
+    # against.
     @model_validator(mode="after")
     def check_something_to_split_against(self) -> Self:
-        if (self.tax_cents or self.tip_cents) and not any(i.price_cents for i in self.items):
-            raise ValueError("tax and tip need at least one item with a price")
+        has_extras = self.tax_cents or self.tip_cents or self.fees_cents
+        if has_extras and not any(item.price_cents for item in self.items):
+            raise ValueError("tax, tip and fees need at least one item with a price")
         return self
 
 
@@ -96,6 +99,7 @@ class BillOut(BaseModel):
     subtotal_cents: int
     tax_cents: int
     tip_cents: int
+    fees_cents: int
     total_cents: int
     split_tip: bool
     items: list[LineItemOut]
@@ -137,9 +141,13 @@ class ClaimResponse(BaseModel):
 class PersonTotalOut(BaseModel):
     crew_member_id: uuid.UUID
     name: str
+    # claimed_cents + unclaimed_cents = subtotal_cents. Only the Captain has unclaimed items.
+    claimed_cents: int
+    unclaimed_cents: int
     subtotal_cents: int
     tax_cents: int
     tip_cents: int
+    fees_cents: int
     total_cents: int
 
 

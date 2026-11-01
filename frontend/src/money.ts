@@ -8,6 +8,11 @@ export function formatCents(cents: number): string {
   return `$${dollars}.${pennies}`
 }
 
+// Turns integer cents into text for an input, so 123456 becomes 1234.56. parseDollars reads it back.
+export function centsToInput(cents: number): string {
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
+}
+
 // Turns what someone typed into integer cents, or null if it isn't a valid amount.
 // Works on the digits as text, because float math gets money wrong: 19.99 * 100 is
 // 1998.9999999999998 in JavaScript.

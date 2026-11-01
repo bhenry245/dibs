@@ -128,6 +128,7 @@ async def build_bill_out(session: AsyncSession, bill: Bill) -> BillOut:
         subtotal_cents=bill.subtotal_cents,
         tax_cents=bill.tax_cents,
         tip_cents=bill.tip_cents,
+        fees_cents=bill.fees_cents,
         total_cents=bill.total_cents,
         split_tip=bill.split_tip,
         items=[
@@ -171,7 +172,8 @@ def apply_details(bill: Bill, details: BillDetails) -> None:
     bill.subtotal_cents = subtotal_cents
     bill.tax_cents = details.tax_cents
     bill.tip_cents = details.tip_cents
-    bill.total_cents = subtotal_cents + details.tax_cents + details.tip_cents
+    bill.fees_cents = details.fees_cents
+    bill.total_cents = subtotal_cents + details.tax_cents + details.tip_cents + details.fees_cents
     bill.split_tip = details.split_tip
 
 
@@ -285,10 +287,12 @@ async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
 
     money_items = []
     unclaimed_item_ids = []
+    unclaimed_cents = 0
     for item in items:
         claims = claims_by_item[item.id]
         if not claims:
             unclaimed_item_ids.append(item.id)
+            unclaimed_cents += item.price_cents
         dibs = {claim.crew_member_id: claim.shares for claim in claims} or {captain.id: 1}
         money_items.append(Item(item.price_cents, dibs))
 
@@ -298,15 +302,20 @@ async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
         bill.tax_cents,
         bill.tip_cents,
         bill.split_tip,
+        bill.fees_cents,
     )
     return BillTotals(
         people=[
             PersonTotalOut(
                 crew_member_id=member.id,
                 name=member.name,
+                claimed_cents=totals[member.id].subtotal_cents
+                - (unclaimed_cents if member.is_captain else 0),
+                unclaimed_cents=unclaimed_cents if member.is_captain else 0,
                 subtotal_cents=totals[member.id].subtotal_cents,
                 tax_cents=totals[member.id].tax_cents,
                 tip_cents=totals[member.id].tip_cents,
+                fees_cents=totals[member.id].fees_cents,
                 total_cents=totals[member.id].total_cents,
             )
             for member in crew

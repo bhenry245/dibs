@@ -1,13 +1,17 @@
 // Types here mirror backend/src/dibs/schemas.py.
 
-export type BillCreate = {
-  captain_email: string
-  captain_name: string
+export type BillDetails = {
   restaurant_name: string | null
   tax_cents: number
   tip_cents: number
+  fees_cents: number
   split_tip: boolean
   items: { description: string; price_cents: number }[]
+}
+
+export type BillCreate = BillDetails & {
+  captain_email: string
+  captain_name: string
 }
 
 export type Bill = {
@@ -17,6 +21,7 @@ export type Bill = {
   subtotal_cents: number
   tax_cents: number
   tip_cents: number
+  fees_cents: number
   total_cents: number
   split_tip: boolean
   items: {
@@ -31,6 +36,18 @@ export type Bill = {
 
 export type BillCreated = {
   bill: Bill
+  crew_member_id: string
+  token: string
+}
+
+export type Draft = {
+  bill: Bill
+  warnings: string[]
+  printed_total_cents: number | null
+}
+
+export type DraftCreated = {
+  draft: Draft
   crew_member_id: string
   token: string
 }
@@ -50,9 +67,12 @@ export type BillTotals = {
   people: {
     crew_member_id: string
     name: string
+    claimed_cents: number
+    unclaimed_cents: number
     subtotal_cents: number
     tax_cents: number
     tip_cents: number
+    fees_cents: number
     total_cents: number
   }[]
   unclaimed_item_ids: string[]
@@ -109,6 +129,40 @@ export function createBill(body: BillCreate): Promise<BillCreated> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+// No Content-Type header here: the browser adds it, with the boundary that separates the fields.
+export function createBillFromReceipt(
+  photo: Blob,
+  captainEmail: string,
+  captainName: string,
+): Promise<DraftCreated> {
+  const form = new FormData()
+  form.append('photo', photo, 'receipt.jpg')
+  form.append('captain_email', captainEmail)
+  form.append('captain_name', captainName)
+  return request('/bills/from-receipt', { method: 'POST', body: form })
+}
+
+export function getDraft(shareCode: string, token: string): Promise<Draft> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/draft`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function updateDraft(shareCode: string, token: string, body: BillDetails): Promise<Draft> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  })
+}
+
+export function openBill(shareCode: string, token: string): Promise<Bill> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/open`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
 

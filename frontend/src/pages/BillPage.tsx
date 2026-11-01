@@ -27,6 +27,10 @@ function BillAmounts({ bill }: { bill: Bill }) {
     <section className="flex flex-col gap-3">
       <dl className="flex flex-col gap-1 border-t border-gray-300 pt-3 text-sm text-gray-700">
         <div className="flex justify-between">
+          <dt>Subtotal</dt>
+          <dd>{formatCents(bill.subtotal_cents)}</dd>
+        </div>
+        <div className="flex justify-between">
           <dt>Tax</dt>
           <dd>{formatCents(bill.tax_cents)}</dd>
         </div>
@@ -34,14 +38,17 @@ function BillAmounts({ bill }: { bill: Bill }) {
           <dt>Tip</dt>
           <dd>{formatCents(bill.tip_cents)}</dd>
         </div>
+        {bill.fees_cents > 0 && (
+          <div className="flex justify-between">
+            <dt>Fees</dt>
+            <dd>{formatCents(bill.fees_cents)}</dd>
+          </div>
+        )}
         <div className="flex justify-between text-base font-semibold text-gray-900">
           <dt>Total</dt>
           <dd>{formatCents(bill.total_cents)}</dd>
         </div>
       </dl>
-      <p className="text-sm text-gray-600">
-        At the table: {bill.crew.map((member) => member.name).join(', ')}
-      </p>
     </section>
   )
 }
@@ -218,6 +225,9 @@ function BillPage() {
           {bill.restaurant_name ?? 'Your bill'}
         </h1>
       </header>
+      <p className="text-sm font-medium text-gray-900">
+        At the table: {bill.crew.map((member) => member.name).join(', ')}
+      </p>
       <ItemList bill={bill} />
       <BillAmounts bill={bill} />
       {bill.status === 'OPEN' ? (

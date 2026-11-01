@@ -38,6 +38,7 @@ def show(receipt: Receipt) -> None:
     print(f"  Subtotal: {amount(receipt.subtotal_cents)}")
     print(f"  Tax:      {amount(receipt.tax_cents)}")
     print(f"  Tip:      {amount(receipt.tip_cents)}")
+    print(f"  Fees:     {amount(receipt.fees_cents)}")
     print(f"  Total:    {amount(receipt.total_cents)}")
     for warning in receipt.warnings:
         print(f"  WARNING: {warning}")

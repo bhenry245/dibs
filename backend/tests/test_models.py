@@ -77,6 +77,7 @@ def _set(attribute: str, name: str, value: object) -> Callable[[dict], None]:
         (_set("bill", "tax_cents", -1), "ck_bill_amounts_not_negative"),
         (_set("bill", "tip_cents", -1), "ck_bill_amounts_not_negative"),
         (_set("bill", "total_cents", -1), "ck_bill_amounts_not_negative"),
+        (_set("bill", "fees_cents", -1), "ck_bill_fees_not_negative"),
         (_set("item", "price_cents", -1), "ck_line_item_price_not_negative"),
         (_set("claim", "shares", 0), "ck_claim_shares_at_least_one"),
         (_set("ana", "is_captain", True), "uq_crew_member_one_captain_per_bill"),
