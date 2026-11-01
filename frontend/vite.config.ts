@@ -12,6 +12,7 @@ export default defineConfig({
       // In production, Caddy does the same job in front of the API container.
       '/api': {
         target: 'http://localhost:8000',
+        ws: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },

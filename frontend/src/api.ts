@@ -1,7 +1,10 @@
 // Types here mirror backend/src/dibs/schemas.py.
 
-// How often open bills check for other people's changes, until live updates in Milestone 4.
+// How often open bills check for changes while the live connection is down, and while it's up as
+// a safety net, so a missed message can't leave a screen out of date for long.
 export const POLL_INTERVAL_MS = 5000
+export const LIVE_POLL_INTERVAL_MS = 30_000
+export const RECONNECT_MAX_MS = 30_000
 
 export type BillDetails = {
   restaurant_name: string | null

@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dibs.db import get_session
+from dibs.live import live_updates
 from dibs.models import Bill, Captain, Claim, CrewMember, LineItem
 from dibs.money import Item, split_bill
 from dibs.schemas import (
@@ -248,6 +249,7 @@ async def join_bill(body: JoinRequest, bill: VisibleBill, session: Session) -> J
     )
     session.add(crew_member)
     await session.commit()
+    await live_updates.notify(bill.id)
     return JoinResponse(crew_member_id=crew_member.id, token=token)
 
 
@@ -269,6 +271,7 @@ async def claim_item(
         )
     )
     await session.commit()
+    await live_updates.notify(item.bill_id)
     return ClaimResponse(line_item_id=item.id, crew_member_id=crew_member.id, shares=body.shares)
 
 
@@ -281,6 +284,7 @@ async def unclaim_item(
         delete(Claim).where(Claim.line_item_id == item.id, Claim.crew_member_id == crew_member.id)
     )
     await session.commit()
+    await live_updates.notify(item.bill_id)
 
 
 # Checks someone can change their claims on this bill, and that every item is on it. An item from
@@ -346,6 +350,7 @@ async def save_my_claims(
             .on_conflict_do_nothing(index_elements=[Claim.line_item_id, Claim.crew_member_id])
         )
     await session.commit()
+    await live_updates.notify(bill.id)
     totals = await calculate_totals(session, bill)
     return person_total(totals, crew_member)
 

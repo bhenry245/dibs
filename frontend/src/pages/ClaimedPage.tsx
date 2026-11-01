@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
-import { type Bill, getBill, getTotals, POLL_INTERVAL_MS } from '../api.ts'
+import { type Bill, getBill, getTotals } from '../api.ts'
 import { isClaimedBy, listNames, otherClaimers } from '../claims.ts'
 import { loadIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
 import TotalSummary from '../TotalSummary.tsx'
+import { useLiveBill } from '../useLiveBill.ts'
 
 function HowToPay({ bill, captainName }: { bill: Bill; captainName: string }) {
   const methods = [
@@ -50,17 +51,18 @@ function ClaimedPage() {
   const shareCode = useParams().shareCode!
   const [identity] = useState(() => loadIdentity(shareCode))
   const billPage = `/b/${encodeURIComponent(shareCode)}`
+  const pollMs = useLiveBill(shareCode)
 
   const billQuery = useQuery({
     queryKey: ['bill', shareCode],
     queryFn: () => getBill(shareCode),
-    refetchInterval: (latest) => (latest.state.data?.status === 'OPEN' ? POLL_INTERVAL_MS : false),
+    refetchInterval: (latest) => (latest.state.data?.status === 'OPEN' ? pollMs : false),
     enabled: identity !== null,
   })
   const totalsQuery = useQuery({
     queryKey: ['totals', shareCode],
     queryFn: () => getTotals(shareCode),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: pollMs,
     enabled: identity !== null,
   })
 

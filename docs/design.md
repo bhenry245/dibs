@@ -240,9 +240,10 @@ When a bill is locked, each crew member gets a summary immediately. While their 
 
 ## 12. Real-time updates
 
-- One WebSocket channel per bill: `bill:{id}`.
-- When a claim changes, the API writes to Postgres, then publishes an event to Redis. Each API instance forwards it to the clients connected to that bill.
-- The client also refetches the bill on reconnect, so a missed event never leaves the screen out of date.
+- One WebSocket channel per bill. Messages only say that the bill changed and carry no data, so clients refetch through the normal endpoints.
+- When a bill changes, the API writes to Postgres, then notifies the clients connected to that bill.
+- With one API server, connections are tracked in its memory. Running several needs Redis, so a change on one server reaches clients connected to another.
+- The client also refetches the bill on reconnect, so a missed event never leaves the screen out of date. It reconnects with increasing waits, and checks every 5 seconds while disconnected and every 30 seconds while connected.
 
 ## 13. Cost and monetization
 

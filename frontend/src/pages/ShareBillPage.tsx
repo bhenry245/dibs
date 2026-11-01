@@ -8,11 +8,11 @@ import {
   type BillTotals,
   getBill,
   getTotals,
-  POLL_INTERVAL_MS,
 } from '../api.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
+import { useLiveBill } from '../useLiveBill.ts'
 
 const BUTTON_CLASS =
   'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100'
@@ -96,16 +96,17 @@ function WhoOwesWhat({ bill, totals }: { bill: Bill; totals: BillTotals }) {
 function ShareBillPage() {
   const shareCode = useParams().shareCode!
   const queryClient = useQueryClient()
+  const pollMs = useLiveBill(shareCode)
 
   const billQuery = useQuery({
     queryKey: ['bill', shareCode],
     queryFn: () => getBill(shareCode),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: pollMs,
   })
   const totalsQuery = useQuery({
     queryKey: ['totals', shareCode],
     queryFn: () => getTotals(shareCode),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: pollMs,
   })
 
   if (billQuery.isPending) {

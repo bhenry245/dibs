@@ -5,7 +5,6 @@ import {
   type Bill,
   describeError,
   getTotals,
-  POLL_INTERVAL_MS,
   previewMyClaims,
   saveMyClaims,
 } from '../api.ts'
@@ -70,11 +69,21 @@ function ClaimRow({
   )
 }
 
-function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCaptain: boolean }) {
+function YourTotal({
+  bill,
+  myId,
+  isCaptain,
+  pollMs,
+}: {
+  bill: Bill
+  myId: string
+  isCaptain: boolean
+  pollMs: number
+}) {
   const query = useQuery({
     queryKey: ['totals', bill.share_code],
     queryFn: () => getTotals(bill.share_code),
-    refetchInterval: bill.status === 'OPEN' ? POLL_INTERVAL_MS : false,
+    refetchInterval: bill.status === 'OPEN' ? pollMs : false,
   })
 
   if (query.isPending) {
@@ -234,7 +243,15 @@ function ConfirmDibs({
 }
 
 // The main screen once you're on a bill: pick what you had, then call dibs on all of it at once.
-function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
+function ClaimItems({
+  bill,
+  identity,
+  pollMs,
+}: {
+  bill: Bill
+  identity: Identity
+  pollMs: number
+}) {
   const queryClient = useQueryClient()
   const myId = identity.crewMemberId
   const me = bill.crew.find((member) => member.id === myId)
@@ -314,7 +331,7 @@ function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
       {hasChanges && (
         <p className="text-sm text-gray-600">Your total updates after you call dibs.</p>
       )}
-      <YourTotal bill={bill} myId={myId} isCaptain={isCaptain} />
+      <YourTotal bill={bill} myId={myId} isCaptain={isCaptain} pollMs={pollMs} />
       <button
         type="button"
         className="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"

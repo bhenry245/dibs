@@ -7,13 +7,13 @@ import {
   describeError,
   getBill,
   joinBill,
-  POLL_INTERVAL_MS,
 } from '../api.ts'
 import { type Identity, loadIdentity, saveIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
 import { INPUT_CLASS } from '../styles.ts'
+import { useLiveBill } from '../useLiveBill.ts'
 import ClaimItems from './ClaimItems.tsx'
 
 function ItemList({ bill }: { bill: Bill }) {
@@ -173,13 +173,13 @@ function JoinForm({
 function BillPage() {
   const shareCode = useParams().shareCode!
   const [identity, setIdentity] = useState(() => loadIdentity(shareCode))
+  const pollMs = useLiveBill(shareCode)
 
   const query = useQuery({
     queryKey: ['bill', shareCode],
     queryFn: () => getBill(shareCode),
     // Keeps who has claimed what current. Once a bill is locked, nothing changes.
-    refetchInterval: (latest) =>
-      latest.state.data?.status === 'OPEN' ? POLL_INTERVAL_MS : false,
+    refetchInterval: (latest) => (latest.state.data?.status === 'OPEN' ? pollMs : false),
   })
 
   if (query.isPending) {
@@ -222,7 +222,7 @@ function BillPage() {
             {bill.restaurant_name ?? 'Your bill'}
           </h1>
         </header>
-        <ClaimItems bill={bill} identity={identity} />
+        <ClaimItems bill={bill} identity={identity} pollMs={pollMs} />
         <BillAmounts bill={bill} />
       </Page>
     )

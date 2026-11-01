@@ -14,6 +14,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dibs.config import settings
+from dibs.live import live_updates
 from dibs.models import Bill, LineItem, ReceiptScan, ReceiptUpload
 from dibs.receipt_storage import (
     ReceiptPhotoMissingError,
@@ -295,4 +296,5 @@ async def open_bill(bill: CaptainsBill, session: Session) -> BillOut:
     await session.flush()
     bill_out = await build_bill_out(session, bill)
     await session.commit()
+    await live_updates.notify(bill.id)
     return bill_out
