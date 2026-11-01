@@ -214,6 +214,38 @@ test('Refresh picks up new people and amounts', async () => {
   expect(await screen.findByText('$18.56')).toBeInTheDocument()
 })
 
+test('picks up new people on its own', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  let totals = { people: [person('cap', 'Brandon', 4992)], unclaimed_item_ids: [] }
+  stubApi(undefined, () => jsonResponse(200, totals))
+  renderSharePage()
+  await screen.findByText('Nobody else has joined yet.')
+
+  totals = TOTALS as typeof totals
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(await screen.findByText('$18.56')).toBeInTheDocument()
+  vi.useRealTimers()
+})
+
+test('a failed background check keeps the page on screen', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  let healthy = true
+  stubApi(() => {
+    if (!healthy) throw new TypeError('Failed to fetch')
+    return jsonResponse(200, BILL)
+  })
+  renderSharePage()
+  await screen.findByText(LINK)
+
+  healthy = false
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(screen.getByText(LINK)).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  vi.useRealTimers()
+})
+
 test('an unknown bill says so and offers a way back', async () => {
   stubApi(() => jsonResponse(404, { detail: 'bill not found' }))
   renderSharePage()

@@ -19,6 +19,9 @@ function snapshot(restaurantName: string, values: BillFormValues): string {
     values.tip,
     values.fees,
     values.splitTip,
+    values.venmo,
+    values.cashApp,
+    values.zelle,
   ])
 }
 
@@ -75,6 +78,9 @@ function ReviewForm({
     tip: centsToInput(initialDraft.bill.tip_cents),
     fees: centsToInput(initialDraft.bill.fees_cents),
     splitTip: initialDraft.bill.split_tip,
+    venmo: initialDraft.bill.venmo_handle ?? '',
+    cashApp: initialDraft.bill.cashapp_tag ?? '',
+    zelle: initialDraft.bill.zelle_contact ?? '',
   }))
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(restaurantName, values))
   const [formError, setFormError] = useState<string | null>(null)

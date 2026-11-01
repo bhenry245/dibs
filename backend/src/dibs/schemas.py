@@ -17,6 +17,12 @@ Cents = Annotated[int, Field(ge=0, le=MAX_CENTS, strict=True)]
 Shares = Annotated[int, Field(ge=1, le=MAX_SHARES, strict=True)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+PaymentHandle = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)
+]
+ZelleContact = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=320)
+]
 # Lowercased so Bob@Example.com and bob@example.com are the same Captain.
 Email = Annotated[EmailStr, AfterValidator(str.lower)]
 
@@ -38,6 +44,9 @@ class BillDetails(BaseModel):
     tip_cents: Cents = 0
     fees_cents: Cents = 0
     split_tip: bool = True
+    venmo_handle: PaymentHandle | None = None
+    cashapp_tag: PaymentHandle | None = None
+    zelle_contact: ZelleContact | None = None
     items: list[LineItemCreate] = Field(min_length=1, max_length=MAX_ITEMS)
 
     # Tax, tip and fees are split in proportion to item prices, so they need a price to split
@@ -72,6 +81,11 @@ class ClaimRequest(BaseModel):
     shares: Shares = 1
 
 
+# Everything someone wants to claim. Saving replaces their whole set in one step.
+class MyClaimsRequest(BaseModel):
+    item_ids: list[uuid.UUID] = Field(max_length=MAX_ITEMS)
+
+
 class ClaimOut(BaseModel):
     crew_member_id: uuid.UUID
     shares: int
@@ -102,6 +116,10 @@ class BillOut(BaseModel):
     fees_cents: int
     total_cents: int
     split_tip: bool
+    # Visible to anyone with the QR link, because the crew need them to pay.
+    venmo_handle: str | None
+    cashapp_tag: str | None
+    zelle_contact: str | None
     items: list[LineItemOut]
     crew: list[CrewMemberOut]
 

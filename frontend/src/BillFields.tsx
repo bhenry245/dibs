@@ -119,6 +119,40 @@ function BillFields({
           Also split the tip
         </label>
       </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-gray-900">How people pay you</h2>
+        <p className="text-sm text-gray-600">
+          Optional. Anyone with the bill&apos;s QR code can see these.
+        </p>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Venmo
+          <input
+            className={INPUT_CLASS}
+            value={values.venmo}
+            onChange={(event) => onChange({ venmo: event.target.value })}
+            maxLength={50}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Cash App
+          <input
+            className={INPUT_CLASS}
+            value={values.cashApp}
+            onChange={(event) => onChange({ cashApp: event.target.value })}
+            maxLength={50}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Zelle (phone or email)
+          <input
+            className={INPUT_CLASS}
+            value={values.zelle}
+            onChange={(event) => onChange({ zelle: event.target.value })}
+            maxLength={320}
+          />
+        </label>
+      </section>
     </>
   )
 }

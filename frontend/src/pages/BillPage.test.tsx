@@ -299,6 +299,32 @@ test('a failed load can be tried again', async () => {
   expect(await screen.findByRole('heading', { name: "Luigi's" })).toBeInTheDocument()
 })
 
+test('checks again on its own while the bill is open, and shows who joined', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const fetchMock = stubApi()
+  renderBillPage()
+  await screen.findByRole('heading', { name: "Luigi's" })
+  const loadsSoFar = fetchMock.mock.calls.length
+
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(fetchMock.mock.calls.length).toBeGreaterThan(loadsSoFar)
+  vi.useRealTimers()
+})
+
+test('stops checking once a bill is locked', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const fetchMock = stubApi({ bill: { ...BILL, status: 'LOCKED' } })
+  renderBillPage()
+  await screen.findByRole('heading', { name: "Luigi's" })
+  const loadsSoFar = fetchMock.mock.calls.length
+
+  await vi.advanceTimersByTimeAsync(15000)
+
+  expect(fetchMock.mock.calls.length).toBe(loadsSoFar)
+  vi.useRealTimers()
+})
+
 test('retries only when another try could help', () => {
   expect(shouldRetry(0, new ApiError(404, 'bill not found'))).toBe(false)
   expect(shouldRetry(0, new ApiError(422, 'bad input'))).toBe(false)

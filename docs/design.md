@@ -55,7 +55,7 @@ Dibs **never handles money**. It only tracks who owes what and nudges people to 
 - As the Captain, Dibs reminds people to pay so I don't have to.
 
 **Crew**
-- As a crew member, I scan the QR, enter my name and contact info, and claim my items.
+- As a crew member, I scan the QR, enter my name and contact info, select my items, and confirm them with "Call dibs".
 - As a crew member, I can share an item (such as an appetizer) with others.
 - As a crew member, I see a clear breakdown: my items, my share of tax and tip, and my total.
 - As a crew member, I can pay with one tap (a prefilled Venmo or Cash App link, or the Captain's Zelle info) and mark myself as paid.
@@ -101,6 +101,8 @@ stateDiagram-v2
 - **SETTLED:** every crew member's payment has been confirmed.
 
 **Why a lock step?** If amounts were final the moment someone claimed, a person joining the nachos later would silently change everyone else's total. Locking gives a single moment where amounts become final, and that is when crew members are told what they owe.
+
+**Paying before the lock:** until locking is built, the confirmation screen shows the Captain's payment info with a note that totals can change if someone shares an item. Payment handles are stored per bill until Captains have logins, so nobody can overwrite another Captain's handles by typing their email.
 
 ## 7. Payment status (per crew member)
 
@@ -293,6 +295,9 @@ erDiagram
         int fees_cents
         int total_cents
         boolean split_tip "default true"
+        string venmo_handle
+        string cashapp_tag
+        string zelle_contact
         timestamptz locked_at
         timestamptz created_at
     }

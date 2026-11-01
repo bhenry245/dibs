@@ -20,6 +20,9 @@ function CreateBillPage() {
     tip: '',
     fees: '',
     splitTip: true,
+    venmo: '',
+    cashApp: '',
+    zelle: '',
   }))
   const [formError, setFormError] = useState<string | null>(null)
   const [scanHint, setScanHint] = useState<string | null>(null)

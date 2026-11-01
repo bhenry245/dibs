@@ -209,6 +209,9 @@ test('editing asks you to save, and saving sends cents and updates the total', a
     tip_cents: 600,
     fees_cents: 0,
     split_tip: true,
+    venmo_handle: null,
+    cashapp_tag: null,
+    zelle_contact: null,
     items: [
       { description: 'Burger', price_cents: 1999 },
       { description: 'Salad', price_cents: 1000 },
@@ -287,6 +290,28 @@ test('fees from the scan can be edited and count towards the total', async () =>
 
   expect(await screen.findByText(/These don't match/)).toBeInTheDocument()
   expect(screen.getByText('Bill total').nextSibling).toHaveTextContent('$38.40')
+})
+
+test('payment info can be added during review, and counts as unsaved', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubApi()
+  renderReviewPage()
+  await loaded()
+
+  await user.type(screen.getByLabelText('Venmo'), '@brandon')
+  expect(screen.getByText('Save your changes to update the bill total.')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Open bill' }))
+
+  await screen.findByRole('heading', { name: 'Have everyone scan this' })
+  expect(JSON.parse(callsTo(fetchMock, 'PUT', '/draft')[0][1].body).venmo_handle).toBe('@brandon')
+})
+
+test('payment info already on a draft loads into the form', async () => {
+  stubApi({ draft: makeDraft({}, { cashapp_tag: '$brandon' }) })
+  renderReviewPage()
+  await loaded()
+
+  expect(screen.getByLabelText('Cash App')).toHaveValue('$brandon')
 })
 
 test('items can be added and removed', async () => {

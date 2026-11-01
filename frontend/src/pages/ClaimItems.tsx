@@ -1,130 +1,97 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type Bill, claimItem, describeError, getTotals, unclaimItem } from '../api.ts'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
+import {
+  type Bill,
+  describeError,
+  getTotals,
+  POLL_INTERVAL_MS,
+  previewMyClaims,
+  saveMyClaims,
+} from '../api.ts'
+import { isClaimedBy, listNames, otherClaimers } from '../claims.ts'
 import type { Identity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
+import TotalSummary from '../TotalSummary.tsx'
 
 type Item = Bill['items'][number]
-
-// Who's on an item, as people say it: "You + Anna". Uneven splits aren't offered in the UI yet.
-function describeClaimers(item: Item, bill: Bill, myId: string): string {
-  const others = item.claims
-    .filter((claim) => claim.crew_member_id !== myId)
-    .map((claim) => bill.crew.find((member) => member.id === claim.crew_member_id)?.name ?? '?')
-  const isMine = item.claims.some((claim) => claim.crew_member_id === myId)
-  return (isMine ? ['You', ...others] : others).join(' + ')
-}
 
 function ClaimRow({
   item,
   bill,
-  identity,
+  myId,
+  isSelected,
   isOpen,
+  onToggle,
 }: {
   item: Item
   bill: Bill
-  identity: Identity
+  myId: string
+  isSelected: boolean
   isOpen: boolean
+  onToggle: () => void
 }) {
-  const queryClient = useQueryClient()
-  const isMine = item.claims.some((claim) => claim.crew_member_id === identity.crewMemberId)
+  const others = otherClaimers(item, bill, myId)
 
-  const mutation = useMutation({
-    mutationFn: () =>
-      isMine ? unclaimItem(item.id, identity.token) : claimItem(item.id, identity.token),
-    // Also after a failure: the likeliest reason is the bill changing, so show its real state.
-    onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['bill', bill.share_code] }),
-        queryClient.invalidateQueries({ queryKey: ['totals', bill.share_code] }),
-      ]),
-  })
+  let claimers = ''
+  if (isSelected) {
+    claimers = ['You', ...others].join(' + ')
+  } else if (others.length > 0) {
+    claimers = `Claimed by ${listNames(others)}`
+  }
 
-  const claimers = describeClaimers(item, bill, identity.crewMemberId)
+  let colors = 'border-gray-300 bg-white'
+  if (isSelected) {
+    colors = 'border-green-600 bg-green-50'
+  } else if (others.length > 0) {
+    colors = 'border-gray-300 bg-gray-100'
+  }
 
   return (
-    <li className="flex flex-col gap-1">
+    <li>
       <button
         type="button"
-        aria-pressed={isMine}
-        aria-busy={mutation.isPending}
-        disabled={!isOpen || mutation.isPending}
-        onClick={() => mutation.mutate()}
-        className={`flex min-h-14 w-full items-center justify-between gap-4 rounded-lg border-2 px-3 py-2 text-left text-gray-900 ${
-          isMine ? 'border-green-600 bg-green-50' : 'border-gray-300 bg-white'
-        } ${mutation.isPending ? 'opacity-50' : ''}`}
+        aria-pressed={isSelected}
+        disabled={!isOpen}
+        onClick={onToggle}
+        className={`flex min-h-14 w-full items-center justify-between gap-4 rounded-lg border-2 px-3 py-2 text-left text-gray-900 ${colors}`}
       >
         <span className="flex min-w-0 flex-col">
           <span className="break-words">{item.description}</span>
-          {claimers && <span className="text-sm text-gray-600">{claimers}</span>}
+          {claimers && <span className="text-sm font-medium text-gray-700">{claimers}</span>}
+          {!isSelected && others.length > 0 && isOpen && (
+            <span className="text-sm text-gray-600">Tap to share it</span>
+          )}
         </span>
         <span>{formatCents(item.price_cents)}</span>
       </button>
-      {mutation.error && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-          {describeError(mutation.error)}
-        </p>
-      )}
     </li>
   )
 }
 
 function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCaptain: boolean }) {
-  // Every amount comes from the API, so the cent-exact math only lives in split_bill.
   const query = useQuery({
     queryKey: ['totals', bill.share_code],
     queryFn: () => getTotals(bill.share_code),
+    refetchInterval: bill.status === 'OPEN' ? POLL_INTERVAL_MS : false,
   })
 
   if (query.isPending) {
     return <p className="text-gray-600">Working out your total…</p>
   }
 
-  if (query.isError) {
+  if (query.isError && !query.data) {
     return <LoadError error={query.error} onRetry={() => query.refetch()} />
   }
 
-  const mine = query.data.people.find((person) => person.crew_member_id === myId)
-  const unclaimedCount = query.data.unclaimed_item_ids.length
+  const totals = query.data!
+  const mine = totals.people.find((person) => person.crew_member_id === myId)
+  const unclaimedCount = totals.unclaimed_item_ids.length
 
   return (
     <section className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
-      {mine && (
-        <>
-          <div className="flex items-baseline justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {isCaptain ? 'Your total' : 'You owe'}
-            </h2>
-            <p className="text-2xl font-bold text-gray-900">{formatCents(mine.total_cents)}</p>
-          </div>
-          <dl className="flex flex-col gap-1 text-sm text-gray-700">
-            <div className="flex justify-between">
-              <dt>Your items</dt>
-              <dd>{formatCents(mine.claimed_cents)}</dd>
-            </div>
-            {mine.unclaimed_cents > 0 && (
-              <div className="flex justify-between">
-                <dt>Unclaimed, counts as yours</dt>
-                <dd>{formatCents(mine.unclaimed_cents)}</dd>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <dt>Your tax</dt>
-              <dd>{formatCents(mine.tax_cents)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Your tip</dt>
-              <dd>{formatCents(mine.tip_cents)}</dd>
-            </div>
-            {mine.fees_cents > 0 && (
-              <div className="flex justify-between">
-                <dt>Your fees</dt>
-                <dd>{formatCents(mine.fees_cents)}</dd>
-              </div>
-            )}
-          </dl>
-        </>
-      )}
+      {mine && <TotalSummary person={mine} isCaptain={isCaptain} />}
       {unclaimedCount > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {unclaimedCount === 1 ? '1 item has' : `${unclaimedCount} items have`} no dibs yet.
@@ -135,13 +102,162 @@ function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCapt
   )
 }
 
-// The main screen once you're on a bill: tap what you had, and see what you owe.
+function ConfirmDibs({
+  bill,
+  identity,
+  isCaptain,
+  selectedIds,
+  onCancel,
+}: {
+  bill: Bill
+  identity: Identity
+  isCaptain: boolean
+  selectedIds: string[]
+  onCancel: () => void
+}) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const dialog = useRef<HTMLDivElement>(null)
+  const myId = identity.crewMemberId
+  const shareCode = bill.share_code
+
+  const chosenItems = bill.items.filter((item) => selectedIds.includes(item.id))
+  const droppedItems = bill.items.filter(
+    (item) => isClaimedBy(item, myId) && !selectedIds.includes(item.id),
+  )
+
+  const preview = useQuery({
+    queryKey: ['preview', shareCode, selectedIds],
+    queryFn: () => previewMyClaims(shareCode, identity.token, selectedIds),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  })
+
+  const confirm = useMutation({
+    mutationFn: () => saveMyClaims(shareCode, identity.token, selectedIds),
+    onSuccess: async () => {
+      // Waits for fresh data, so the next screen can't show the claims from before this save.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['bill', shareCode] }),
+        queryClient.invalidateQueries({ queryKey: ['totals', shareCode] }),
+      ])
+      navigate(`/b/${encodeURIComponent(shareCode)}/claimed`)
+    },
+    // The likeliest reason it failed is the bill changing, so show its real state behind this.
+    onError: () => queryClient.invalidateQueries({ queryKey: ['bill', shareCode] }),
+  })
+
+  // Moves keyboard and screen reader focus into the modal when it opens.
+  useEffect(() => {
+    dialog.current?.focus()
+  }, [])
+
+  return (
+    <div className="fixed inset-0 z-10 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <div
+        ref={dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dibs-title"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !confirm.isPending) onCancel()
+        }}
+        className="flex max-h-[90vh] w-full max-w-md flex-col gap-4 overflow-y-auto rounded-lg bg-white p-4 outline-none"
+      >
+        <h2 id="confirm-dibs-title" className="text-xl font-bold text-gray-900">
+          Confirm your dibs
+        </h2>
+
+        {chosenItems.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {chosenItems.map((item) => {
+              const others = otherClaimers(item, bill, myId)
+              return (
+                <li key={item.id} className="flex justify-between gap-4 text-gray-900">
+                  <span className="flex min-w-0 flex-col">
+                    <span className="break-words">{item.description}</span>
+                    {others.length > 0 && (
+                      <span className="text-sm text-gray-600">Shared with {listNames(others)}</span>
+                    )}
+                  </span>
+                  <span>{formatCents(item.price_cents)}</span>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="text-gray-700">You won&apos;t have any items.</p>
+        )}
+
+        {droppedItems.length > 0 && (
+          <p className="text-sm text-gray-700">
+            Dropping: {listNames(droppedItems.map((item) => item.description))}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-3 border-t border-gray-300 pt-3">
+          {preview.isPending && <p className="text-gray-600">Working out your total…</p>}
+          {preview.isError && (
+            <LoadError error={preview.error} onRetry={() => preview.refetch()} />
+          )}
+          {preview.data && <TotalSummary person={preview.data} isCaptain={isCaptain} />}
+        </div>
+
+        {confirm.error && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+            {describeError(confirm.error)}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            className="rounded-lg bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
+            disabled={!preview.data || confirm.isPending}
+            onClick={() => confirm.mutate()}
+          >
+            {confirm.isPending ? 'Saving…' : 'Confirm'}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-50"
+            disabled={confirm.isPending}
+            onClick={onCancel}
+          >
+            Go back
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// The main screen once you're on a bill: pick what you had, then call dibs on all of it at once.
 function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
   const queryClient = useQueryClient()
-  const me = bill.crew.find((member) => member.id === identity.crewMemberId)
+  const myId = identity.crewMemberId
+  const me = bill.crew.find((member) => member.id === myId)
+  const isCaptain = me?.is_captain ?? false
   const isOpen = bill.status === 'OPEN'
+  const savedIds = bill.items.filter((item) => isClaimedBy(item, myId)).map((item) => item.id)
 
-  // Other people's taps only arrive on a refetch until live updates come in Milestone 4.
+  // Lives here rather than on the server until confirmed, so updates about other people's claims
+  // never undo what someone is picking.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(savedIds))
+  const [isConfirming, setIsConfirming] = useState(false)
+
+  const hasChanges =
+    selectedIds.size !== savedIds.length || savedIds.some((id) => !selectedIds.has(id))
+
+  function toggle(itemId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (!next.delete(itemId)) next.add(itemId)
+      return next
+    })
+  }
+
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['bill', bill.share_code] })
     queryClient.invalidateQueries({ queryKey: ['totals', bill.share_code] })
@@ -153,7 +269,7 @@ function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
         <p className="font-semibold text-gray-900">You&apos;re in, {me?.name}.</p>
         <p className="text-sm text-gray-600">
           {isOpen
-            ? 'Tap what you had. Tap it again to drop it.'
+            ? "Tap what you had, then call dibs."
             : 'This bill is locked, so claims are final.'}
         </p>
         <p className="mt-2 text-sm font-medium text-gray-900">
@@ -162,10 +278,43 @@ function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
       </div>
       <ul className="flex flex-col gap-2">
         {bill.items.map((item) => (
-          <ClaimRow key={item.id} item={item} bill={bill} identity={identity} isOpen={isOpen} />
+          <ClaimRow
+            key={item.id}
+            item={item}
+            bill={bill}
+            myId={myId}
+            isSelected={selectedIds.has(item.id)}
+            isOpen={isOpen}
+            onToggle={() => toggle(item.id)}
+          />
         ))}
       </ul>
-      <YourTotal bill={bill} myId={identity.crewMemberId} isCaptain={me?.is_captain ?? false} />
+
+      {isOpen && (
+        <div className="sticky bottom-0 flex flex-col gap-2 bg-gray-50 py-2">
+          <button
+            type="button"
+            className="rounded-lg bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
+            disabled={!hasChanges}
+            onClick={() => setIsConfirming(true)}
+          >
+            Call dibs
+          </button>
+          {!hasChanges && savedIds.length > 0 && (
+            <Link
+              to={`/b/${encodeURIComponent(bill.share_code)}/claimed`}
+              className="text-center text-sm font-medium text-gray-900 underline"
+            >
+              See what you claimed
+            </Link>
+          )}
+        </div>
+      )}
+
+      {hasChanges && (
+        <p className="text-sm text-gray-600">Your total updates after you call dibs.</p>
+      )}
+      <YourTotal bill={bill} myId={myId} isCaptain={isCaptain} />
       <button
         type="button"
         className="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
@@ -173,6 +322,16 @@ function ClaimItems({ bill, identity }: { bill: Bill; identity: Identity }) {
       >
         Refresh
       </button>
+
+      {isConfirming && (
+        <ConfirmDibs
+          bill={bill}
+          identity={identity}
+          isCaptain={isCaptain}
+          selectedIds={[...selectedIds]}
+          onCancel={() => setIsConfirming(false)}
+        />
+      )}
     </div>
   )
 }

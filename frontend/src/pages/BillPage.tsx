@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type SyntheticEvent, useState } from 'react'
 import { useParams } from 'react-router'
-import { ApiError, type Bill, describeError, getBill, joinBill } from '../api.ts'
+import {
+  ApiError,
+  type Bill,
+  describeError,
+  getBill,
+  joinBill,
+  POLL_INTERVAL_MS,
+} from '../api.ts'
 import { type Identity, loadIdentity, saveIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
@@ -170,6 +177,9 @@ function BillPage() {
   const query = useQuery({
     queryKey: ['bill', shareCode],
     queryFn: () => getBill(shareCode),
+    // Keeps who has claimed what current. Once a bill is locked, nothing changes.
+    refetchInterval: (latest) =>
+      latest.state.data?.status === 'OPEN' ? POLL_INTERVAL_MS : false,
   })
 
   if (query.isPending) {
@@ -180,7 +190,8 @@ function BillPage() {
     )
   }
 
-  if (query.isError) {
+  // Only with nothing to show: a failed background check shouldn't lose someone's selections.
+  if (query.isError && !query.data) {
     if (query.error instanceof ApiError && query.error.status === 404) {
       return (
         <Page>
@@ -198,7 +209,7 @@ function BillPage() {
     )
   }
 
-  const bill = query.data
+  const bill = query.data!
   // Check the saved identity against the bill, in case it's for someone no longer on it.
   const me = identity && bill.crew.find((member) => member.id === identity.crewMemberId)
 

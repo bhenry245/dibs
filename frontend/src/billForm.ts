@@ -14,6 +14,9 @@ export type BillFormValues = {
   tip: string
   fees: string
   splitTip: boolean
+  venmo: string
+  cashApp: string
+  zelle: string
 }
 
 // A stable id for each row, so React keeps typed text with the right row when one is removed.
@@ -65,6 +68,9 @@ export function buildDetails(values: BillFormValues, restaurantName: string): Bi
     tip_cents: tipCents,
     fees_cents: feesCents,
     split_tip: values.splitTip,
+    venmo_handle: values.venmo.trim() || null,
+    cashapp_tag: values.cashApp.trim() || null,
+    zelle_contact: values.zelle.trim() || null,
     items,
   }
 }

@@ -1,11 +1,17 @@
 // Types here mirror backend/src/dibs/schemas.py.
 
+// How often open bills check for other people's changes, until live updates in Milestone 4.
+export const POLL_INTERVAL_MS = 5000
+
 export type BillDetails = {
   restaurant_name: string | null
   tax_cents: number
   tip_cents: number
   fees_cents: number
   split_tip: boolean
+  venmo_handle: string | null
+  cashapp_tag: string | null
+  zelle_contact: string | null
   items: { description: string; price_cents: number }[]
 }
 
@@ -24,6 +30,9 @@ export type Bill = {
   fees_cents: number
   total_cents: number
   split_tip: boolean
+  venmo_handle: string | null
+  cashapp_tag: string | null
+  zelle_contact: string | null
   items: {
     id: string
     description: string
@@ -77,6 +86,8 @@ export type BillTotals = {
   }[]
   unclaimed_item_ids: string[]
 }
+
+export type PersonTotal = BillTotals['people'][number]
 
 // The API answered with an error. Its message is safe to show to the user.
 export class ApiError extends Error {
@@ -182,17 +193,28 @@ export function getTotals(shareCode: string): Promise<BillTotals> {
   return request(`/bills/${encodeURIComponent(shareCode)}/totals`)
 }
 
-export function claimItem(itemId: string, token: string): Promise<void> {
-  return request(`/items/${itemId}/claim`, {
-    method: 'PUT',
+// What someone's total would be with these items. Nothing is saved.
+export function previewMyClaims(
+  shareCode: string,
+  token: string,
+  itemIds: string[],
+): Promise<PersonTotal> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/my-claims/preview`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ shares: 1 }),
+    body: JSON.stringify({ item_ids: itemIds }),
   })
 }
 
-export function unclaimItem(itemId: string, token: string): Promise<void> {
-  return request(`/items/${itemId}/claim`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
+// Saves exactly these items as someone's claims, all in one step.
+export function saveMyClaims(
+  shareCode: string,
+  token: string,
+  itemIds: string[],
+): Promise<PersonTotal> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/my-claims`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ item_ids: itemIds }),
   })
 }

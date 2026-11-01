@@ -107,6 +107,9 @@ test('creates a bill with amounts in cents and opens the share page', async () =
     tip_cents: 780,
     fees_cents: 0,
     split_tip: true,
+    venmo_handle: null,
+    cashapp_tag: null,
+    zelle_contact: null,
     items: [
       { description: 'Burger', price_cents: 2000 },
       { description: 'Salad', price_cents: 1999 },
@@ -195,11 +198,30 @@ test('tip is the last of the tax, fees and tip fields', () => {
 
   const boxes = screen.getAllByRole('textbox')
 
-  expect(boxes.slice(-3)).toEqual([
+  expect(boxes.slice(-6, -3)).toEqual([
     screen.getByLabelText('Tax'),
     screen.getByLabelText('Fees'),
     screen.getByLabelText('Tip'),
   ])
+})
+
+test('sends payment info with the bill', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.type(screen.getByLabelText('Venmo'), ' @brandon ')
+  await user.type(screen.getByLabelText('Cash App'), '$brandon')
+  await user.type(screen.getByLabelText('Zelle (phone or email)'), '555-0100')
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  await landedOnSharePage()
+  expect(sentBill(fetchMock)).toMatchObject({
+    venmo_handle: '@brandon',
+    cashapp_tag: '$brandon',
+    zelle_contact: '555-0100',
+  })
 })
 
 test('removing an item keeps the text in the other rows', async () => {

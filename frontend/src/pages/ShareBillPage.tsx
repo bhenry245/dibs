@@ -2,7 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { ApiError, type Bill, type BillTotals, getBill, getTotals } from '../api.ts'
+import {
+  ApiError,
+  type Bill,
+  type BillTotals,
+  getBill,
+  getTotals,
+  POLL_INTERVAL_MS,
+} from '../api.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
@@ -93,10 +100,12 @@ function ShareBillPage() {
   const billQuery = useQuery({
     queryKey: ['bill', shareCode],
     queryFn: () => getBill(shareCode),
+    refetchInterval: POLL_INTERVAL_MS,
   })
   const totalsQuery = useQuery({
     queryKey: ['totals', shareCode],
     queryFn: () => getTotals(shareCode),
+    refetchInterval: POLL_INTERVAL_MS,
   })
 
   if (billQuery.isPending) {
@@ -107,7 +116,7 @@ function ShareBillPage() {
     )
   }
 
-  if (billQuery.isError) {
+  if (billQuery.isError && !billQuery.data) {
     if (billQuery.error instanceof ApiError && billQuery.error.status === 404) {
       return (
         <Page>
@@ -126,7 +135,7 @@ function ShareBillPage() {
     )
   }
 
-  const bill = billQuery.data
+  const bill = billQuery.data!
 
   // Built from the address this page was opened on, so it points at whichever server is running.
   const link = `${window.location.origin}/b/${encodeURIComponent(shareCode)}`
@@ -159,10 +168,10 @@ function ShareBillPage() {
       </Link>
 
       {totalsQuery.isPending && <p className="text-gray-600">Working out the totals…</p>}
-      {totalsQuery.isError && (
+      {totalsQuery.isError && !totalsQuery.data && (
         <LoadError error={totalsQuery.error} onRetry={() => totalsQuery.refetch()} />
       )}
-      {totalsQuery.isSuccess && <WhoOwesWhat bill={bill} totals={totalsQuery.data} />}
+      {totalsQuery.data && <WhoOwesWhat bill={bill} totals={totalsQuery.data} />}
 
       <button type="button" className={`${BUTTON_CLASS} self-start`} onClick={refresh}>
         Refresh

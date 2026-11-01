@@ -543,6 +543,19 @@ async def test_corrections_can_change_fees_and_the_total_follows(
     assert response.json()["bill"]["total_cents"] == 2150
 
 
+async def test_the_review_step_can_add_payment_info(client: AsyncClient, claude: FakeClaude):
+    created = await scan(client)
+    code = created["draft"]["bill"]["share_code"]
+    headers = auth(created["token"])
+
+    await client.put(
+        f"/bills/{code}/draft", json=CORRECTED | {"venmo_handle": "@cap"}, headers=headers
+    )
+    await client.post(f"/bills/{code}/open", headers=headers)
+
+    assert (await client.get(f"/bills/{code}")).json()["venmo_handle"] == "@cap"
+
+
 async def test_bill_typed_by_hand_is_not_a_draft(client: AsyncClient, claude: FakeClaude):
     bill = await manual_bill(client)
     code = bill["bill"]["share_code"]

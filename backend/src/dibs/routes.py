@@ -28,6 +28,7 @@ from dibs.schemas import (
     JoinRequest,
     JoinResponse,
     LineItemOut,
+    MyClaimsRequest,
     PersonTotalOut,
 )
 
@@ -131,6 +132,9 @@ async def build_bill_out(session: AsyncSession, bill: Bill) -> BillOut:
         fees_cents=bill.fees_cents,
         total_cents=bill.total_cents,
         split_tip=bill.split_tip,
+        venmo_handle=bill.venmo_handle,
+        cashapp_tag=bill.cashapp_tag,
+        zelle_contact=bill.zelle_contact,
         items=[
             LineItemOut(
                 id=item.id,
@@ -175,6 +179,9 @@ def apply_details(bill: Bill, details: BillDetails) -> None:
     bill.fees_cents = details.fees_cents
     bill.total_cents = subtotal_cents + details.tax_cents + details.tip_cents + details.fees_cents
     bill.split_tip = details.split_tip
+    bill.venmo_handle = details.venmo_handle
+    bill.cashapp_tag = details.cashapp_tag
+    bill.zelle_contact = details.zelle_contact
 
 
 def add_items(session: AsyncSession, bill: Bill, details: BillDetails) -> None:
@@ -276,10 +283,86 @@ async def unclaim_item(
     await session.commit()
 
 
+# Checks someone can change their claims on this bill, and that every item is on it. An item from
+# another bill gets the same 404 as one that doesn't exist.
+async def check_my_claims(
+    bill: Bill, crew_member: CrewMember, body: MyClaimsRequest, session: AsyncSession
+) -> set[uuid.UUID]:
+    if crew_member.bill_id != bill.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "you aren't on this bill")
+    require_open(bill)
+    item_ids = set(body.item_ids)
+    items_on_bill = set(
+        await session.scalars(select(LineItem.id).where(LineItem.bill_id == bill.id))
+    )
+    if not item_ids <= items_on_bill:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
+    return item_ids
+
+
+def person_total(totals: BillTotals, crew_member: CrewMember) -> PersonTotalOut:
+    return next(person for person in totals.people if person.crew_member_id == crew_member.id)
+
+
+# What someone's total would be with these items, without saving anything. It's a POST because
+# the list of items is a body, but it changes nothing.
+@router.post("/bills/{share_code}/my-claims/preview")
+async def preview_my_claims(
+    body: MyClaimsRequest,
+    bill: VisibleBill,
+    crew_member: CurrentCrewMember,
+    session: Session,
+) -> PersonTotalOut:
+    item_ids = await check_my_claims(bill, crew_member, body, session)
+    totals = await calculate_totals(session, bill, picks=(crew_member.id, item_ids))
+    return person_total(totals, crew_member)
+
+
+# Saves everything someone is claiming in one transaction, so they can't end up with half of it.
+# It's idempotent like the other PUTs, and leaves other people's claims alone.
+@router.put("/bills/{share_code}/my-claims")
+async def save_my_claims(
+    body: MyClaimsRequest,
+    bill: VisibleBill,
+    crew_member: CurrentCrewMember,
+    session: Session,
+) -> PersonTotalOut:
+    item_ids = await check_my_claims(bill, crew_member, body, session)
+    await session.execute(
+        delete(Claim).where(
+            Claim.crew_member_id == crew_member.id, Claim.line_item_id.not_in(item_ids)
+        )
+    )
+    if item_ids:
+        # DO NOTHING keeps the shares on anything they already claimed.
+        await session.execute(
+            insert(Claim)
+            .values(
+                [
+                    {"line_item_id": item_id, "crew_member_id": crew_member.id}
+                    for item_id in item_ids
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=[Claim.line_item_id, Claim.crew_member_id])
+        )
+    await session.commit()
+    totals = await calculate_totals(session, bill)
+    return person_total(totals, crew_member)
+
+
 # What everyone would owe right now. Unclaimed items count as the Captain's, which is what
 # happens at lock time (design §8), and they're listed so the Captain can be warned.
 @router.get("/bills/{share_code}/totals")
 async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
+    return await calculate_totals(session, bill)
+
+
+# With picks, works out the totals as if that person had claimed exactly those items.
+async def calculate_totals(
+    session: AsyncSession,
+    bill: Bill,
+    picks: tuple[uuid.UUID, set[uuid.UUID]] | None = None,
+) -> BillTotals:
     crew = await load_crew(session, bill.id)
     captain = crew[0]
     items = await load_items(session, bill.id)
@@ -289,11 +372,17 @@ async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
     unclaimed_item_ids = []
     unclaimed_cents = 0
     for item in items:
-        claims = claims_by_item[item.id]
-        if not claims:
+        dibs = {claim.crew_member_id: claim.shares for claim in claims_by_item[item.id]}
+        if picks:
+            person_id, item_ids = picks
+            if item.id in item_ids:
+                dibs.setdefault(person_id, 1)
+            else:
+                dibs.pop(person_id, None)
+        if not dibs:
             unclaimed_item_ids.append(item.id)
             unclaimed_cents += item.price_cents
-        dibs = {claim.crew_member_id: claim.shares for claim in claims} or {captain.id: 1}
+            dibs = {captain.id: 1}
         money_items.append(Item(item.price_cents, dibs))
 
     totals = split_bill(

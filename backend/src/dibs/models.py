@@ -82,6 +82,12 @@ class Bill(Base):
     fees_cents: Mapped[int] = mapped_column(server_default="0")
     total_cents: Mapped[int] = mapped_column(server_default="0")
     split_tip: Mapped[bool] = mapped_column(server_default=text("true"))
+    # How the crew pay the Captain. These move to the Captain's account once logins exist.
+    # Until then anyone can type anyone's email, so saving them on the account would let a
+    # stranger swap in their own Venmo and collect someone else's money.
+    venmo_handle: Mapped[str | None] = mapped_column(String(50))
+    cashapp_tag: Mapped[str | None] = mapped_column(String(50))
+    zelle_contact: Mapped[str | None] = mapped_column(String(320))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

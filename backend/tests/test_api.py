@@ -378,6 +378,246 @@ async def test_claims_are_frozen_once_a_bill_is_not_open(
     assert response.status_code == 409
 
 
+# --- PUT and POST preview /bills/{share_code}/my-claims ---
+
+
+async def bill_with_ana(client: AsyncClient) -> tuple[dict, dict, str, list[str]]:
+    created = await create_bill(client)
+    code = created["bill"]["share_code"]
+    joined = await join(client, code)
+    return created, joined, code, [item["id"] for item in created["bill"]["items"]]
+
+
+async def my_claims(client: AsyncClient, code: str, token: str, item_ids: list[str]):
+    return await client.put(
+        f"/bills/{code}/my-claims", json={"item_ids": item_ids}, headers=auth(token)
+    )
+
+
+def claimers(bill: dict) -> list[list[str]]:
+    return [[claim["crew_member_id"] for claim in item["claims"]] for item in bill["items"]]
+
+
+async def test_my_claims_saves_every_item_and_returns_my_total(client: AsyncClient):
+    _, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+
+    response = await my_claims(client, code, joined["token"], [burger, salad])
+
+    assert response.status_code == 200
+    assert response.json()["claimed_cents"] == 3000
+    assert response.json()["total_cents"] == 3000 + 240 + 600
+    bill = (await client.get(f"/bills/{code}")).json()
+    ana = joined["crew_member_id"]
+    assert claimers(bill) == [[ana], [ana], []]
+
+
+async def test_my_claims_replaces_what_i_had(client: AsyncClient):
+    _, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+    await my_claims(client, code, joined["token"], [burger, salad])
+
+    await my_claims(client, code, joined["token"], [salad, nachos])
+
+    bill = (await client.get(f"/bills/{code}")).json()
+    ana = joined["crew_member_id"]
+    assert claimers(bill) == [[], [ana], [ana]]
+
+
+async def test_empty_my_claims_drops_everything(client: AsyncClient):
+    _, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+    await my_claims(client, code, joined["token"], [burger])
+
+    response = await my_claims(client, code, joined["token"], [])
+
+    assert response.status_code == 200
+    assert response.json()["total_cents"] == 0
+    assert claimers((await client.get(f"/bills/{code}")).json()) == [[], [], []]
+
+
+async def test_my_claims_leaves_other_people_alone_and_shares_items(client: AsyncClient):
+    created, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+    await my_claims(client, code, created["token"], [nachos, burger])
+
+    await my_claims(client, code, joined["token"], [nachos])
+    await my_claims(client, code, joined["token"], [nachos, salad])
+
+    bill = (await client.get(f"/bills/{code}")).json()
+    cap, ana = created["crew_member_id"], joined["crew_member_id"]
+    assert claimers(bill)[0] == [cap]
+    assert claimers(bill)[1] == [ana]
+    assert set(claimers(bill)[2]) == {cap, ana}
+    totals = (await client.get(f"/bills/{code}/totals")).json()
+    assert by_name(totals)["Ana"][0] == 1000 + 450
+
+
+async def test_my_claims_is_idempotent_and_ignores_repeats(client: AsyncClient):
+    _, joined, code, (burger, _salad, _nachos) = await bill_with_ana(client)
+
+    await my_claims(client, code, joined["token"], [burger, burger])
+    response = await my_claims(client, code, joined["token"], [burger])
+
+    assert response.status_code == 200
+    assert claimers((await client.get(f"/bills/{code}")).json())[0] == [joined["crew_member_id"]]
+
+
+async def test_my_claims_keeps_an_existing_share_count(client: AsyncClient):
+    _, joined, code, (burger, salad, _nachos) = await bill_with_ana(client)
+    await claim(client, burger, joined["token"], shares=3)
+
+    await my_claims(client, code, joined["token"], [burger, salad])
+
+    bill = (await client.get(f"/bills/{code}")).json()
+    assert bill["items"][0]["claims"][0]["shares"] == 3
+
+
+@pytest.mark.parametrize("path", ["my-claims", "my-claims/preview"])
+async def test_my_claims_rejects_items_from_another_bill(client: AsyncClient, path: str):
+    _, joined, code, (burger, _salad, _nachos) = await bill_with_ana(client)
+    other = await create_bill(client, captain_email="other@example.com")
+    other_item = other["bill"]["items"][0]["id"]
+    method = "PUT" if path == "my-claims" else "POST"
+
+    response = await client.request(
+        method,
+        f"/bills/{code}/{path}",
+        json={"item_ids": [burger, other_item]},
+        headers=auth(joined["token"]),
+    )
+
+    assert response.status_code == 404
+    assert claimers((await client.get(f"/bills/{code}")).json()) == [[], [], []]
+
+
+async def test_my_claims_rejects_an_unknown_item(client: AsyncClient):
+    _, joined, code, _ = await bill_with_ana(client)
+
+    response = await my_claims(client, code, joined["token"], [str(uuid.uuid4())])
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(("method", "path"), [("PUT", "my-claims"), ("POST", "my-claims/preview")])
+async def test_my_claims_needs_a_token_for_this_bill(client: AsyncClient, method: str, path: str):
+    _, _, code, _ = await bill_with_ana(client)
+    other = await create_bill(client, captain_email="other@example.com")
+    url = f"/bills/{code}/{path}"
+    body = {"item_ids": []}
+
+    assert (await client.request(method, url, json=body)).status_code == 401
+    wrong_bill = await client.request(method, url, json=body, headers=auth(other["token"]))
+    assert wrong_bill.status_code == 403
+
+
+@pytest.mark.parametrize(("method", "path"), [("PUT", "my-claims"), ("POST", "my-claims/preview")])
+async def test_my_claims_are_frozen_once_a_bill_is_locked(
+    client: AsyncClient, session: AsyncSession, method: str, path: str
+):
+    _, joined, code, (burger, _salad, _nachos) = await bill_with_ana(client)
+    await set_status(session, code, "LOCKED")
+
+    response = await client.request(
+        method, f"/bills/{code}/{path}", json={"item_ids": [burger]}, headers=auth(joined["token"])
+    )
+
+    assert response.status_code == 409
+
+
+async def test_preview_shows_the_total_without_saving_anything(client: AsyncClient):
+    created, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+    await claim(client, nachos, created["token"])
+
+    response = await client.post(
+        f"/bills/{code}/my-claims/preview",
+        json={"item_ids": [salad, nachos]},
+        headers=auth(joined["token"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["claimed_cents"] == 1000 + 450
+    assert response.json()["tax_cents"] == 116
+    assert response.json()["total_cents"] == 1450 + 116 + 290
+    assert claimers((await client.get(f"/bills/{code}")).json()) == [
+        [],
+        [],
+        [created["crew_member_id"]],
+    ]
+
+
+async def test_preview_can_drop_an_item_i_already_claimed(client: AsyncClient):
+    _, joined, code, (burger, salad, _nachos) = await bill_with_ana(client)
+    await my_claims(client, code, joined["token"], [burger])
+
+    response = await client.post(
+        f"/bills/{code}/my-claims/preview",
+        json={"item_ids": [salad]},
+        headers=auth(joined["token"]),
+    )
+
+    assert response.json()["claimed_cents"] == 1000
+
+
+async def test_preview_matches_what_saving_returns(client: AsyncClient):
+    created, joined, code, (burger, salad, nachos) = await bill_with_ana(client)
+    await claim(client, nachos, created["token"])
+    body = {"item_ids": [salad, nachos]}
+    headers = auth(joined["token"])
+
+    preview = await client.post(f"/bills/{code}/my-claims/preview", json=body, headers=headers)
+    saved = await client.put(f"/bills/{code}/my-claims", json=body, headers=headers)
+
+    assert preview.json() == saved.json()
+
+
+async def test_captain_preview_counts_what_stays_unclaimed(client: AsyncClient):
+    created, _, code, (burger, salad, nachos) = await bill_with_ana(client)
+
+    response = await client.post(
+        f"/bills/{code}/my-claims/preview",
+        json={"item_ids": [salad]},
+        headers=auth(created["token"]),
+    )
+
+    assert response.json()["claimed_cents"] == 1000
+    assert response.json()["unclaimed_cents"] == 2900
+    assert response.json()["total_cents"] == 4992
+
+
+# --- Payment info ---
+
+
+async def test_payment_info_is_saved_on_the_bill_for_the_crew_to_see(client: AsyncClient):
+    created = await create_bill(
+        client, venmo_handle=" @brandon ", cashapp_tag="$brandon", zelle_contact="555-0100"
+    )
+
+    bill = (await client.get(f"/bills/{created['bill']['share_code']}")).json()
+
+    assert bill["venmo_handle"] == "@brandon"
+    assert bill["cashapp_tag"] == "$brandon"
+    assert bill["zelle_contact"] == "555-0100"
+
+
+async def test_payment_info_is_optional(client: AsyncClient):
+    bill = (await create_bill(client))["bill"]
+
+    assert (bill["venmo_handle"], bill["cashapp_tag"], bill["zelle_contact"]) == (None, None, None)
+
+
+async def test_a_second_bill_cannot_change_another_bills_payment_info(client: AsyncClient):
+    first = await create_bill(client, venmo_handle="@real")
+    await create_bill(client, venmo_handle="@stranger")
+
+    bill = (await client.get(f"/bills/{first['bill']['share_code']}")).json()
+
+    assert bill["venmo_handle"] == "@real"
+
+
+@pytest.mark.parametrize("field", ["venmo_handle", "cashapp_tag"])
+async def test_overlong_payment_info_is_rejected(client: AsyncClient, field: str):
+    response = await client.post("/bills", json=bill_body(**{field: "x" * 51}))
+
+    assert response.status_code == 422
+
+
 # --- GET /bills/{share_code}/totals ---
 
 
