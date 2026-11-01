@@ -64,13 +64,13 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check .
 
-      - name: Run tests
-        run: uv run pytest
-
       # Up, all the way down, and up again: catches a broken downgrade()
-      # before it's needed in an emergency.
+      # before it's needed in an emergency. This also builds the schema the tests use.
       - name: Check migrations
         run: |
           uv run alembic upgrade head
           uv run alembic downgrade base
           uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest

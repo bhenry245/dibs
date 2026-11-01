@@ -89,12 +89,14 @@ Open http://localhost:5173. A green **API connected** dot means the frontend, AP
 
 ### Tests and checks
 
-These are the same commands CI runs:
+These are the same commands CI runs. The backend tests need Postgres running and migrated; each test rolls back, so they leave your data alone.
 
 ```bash
 # Backend
+docker compose up -d
 cd backend
 uv run ruff check . && uv run ruff format --check .
+uv run alembic upgrade head
 uv run pytest
 
 # Frontend

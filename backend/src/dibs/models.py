@@ -116,8 +116,8 @@ class CrewMember(Base):
     name: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(32))
     email: Mapped[str | None] = mapped_column(String(320))
-    # A hash of the token on their device, never the token itself (design §15). The Captain's
-    # row has none, because they sign in with their account.
+    # A hash of the token on their device, never the token itself (design §15). The Captain gets
+    # one too, so they claim items the same way as everyone else.
     token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     is_captain: Mapped[bool] = mapped_column(server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
+from dibs.routes import router
+
 app = FastAPI(title="Dibs API")
+app.include_router(router)
 
 
 @app.get("/health")

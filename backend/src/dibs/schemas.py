@@ -1,0 +1,131 @@
+# The JSON the API accepts and returns. Keeping this separate from models.py means a new database
+# column (like token_hash) can never end up in a response by accident.
+
+import uuid
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, StringConstraints, model_validator
+
+# These caps keep a bill's total inside a Postgres integer (about $21 million): 200 items at
+# $100,000 each, plus tax and tip, still fits.
+MAX_CENTS = 10_000_000
+MAX_ITEMS = 200
+MAX_SHARES = 100
+
+# strict=True rejects 12.0 as well as 12.5, so a float can never pass for cents.
+Cents = Annotated[int, Field(ge=0, le=MAX_CENTS, strict=True)]
+Shares = Annotated[int, Field(ge=1, le=MAX_SHARES, strict=True)]
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+# Lowercased so Bob@Example.com and bob@example.com are the same Captain.
+Email = Annotated[EmailStr, AfterValidator(str.lower)]
+
+
+class LineItemCreate(BaseModel):
+    description: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
+    price_cents: Cents
+
+
+class BillCreate(BaseModel):
+    captain_email: Email
+    captain_name: Name
+    restaurant_name: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+        | None
+    ) = None
+    tax_cents: Cents = 0
+    tip_cents: Cents = 0
+    split_tip: bool = True
+    items: list[LineItemCreate] = Field(min_length=1, max_length=MAX_ITEMS)
+
+    # Tax and tip are split in proportion to item prices, so they need a price to split against.
+    @model_validator(mode="after")
+    def check_something_to_split_against(self) -> "BillCreate":
+        if (self.tax_cents or self.tip_cents) and not any(i.price_cents for i in self.items):
+            raise ValueError("tax and tip need at least one item with a price")
+        return self
+
+
+class JoinRequest(BaseModel):
+    name: Name
+    phone: Phone | None = None
+    email: Email | None = None
+
+    # Design §3: crew give a name plus a phone or an email, so reminders can reach them.
+    @model_validator(mode="after")
+    def check_has_contact(self) -> "JoinRequest":
+        if self.phone is None and self.email is None:
+            raise ValueError("give a phone number or an email")
+        return self
+
+
+class ClaimRequest(BaseModel):
+    shares: Shares = 1
+
+
+class ClaimOut(BaseModel):
+    crew_member_id: uuid.UUID
+    shares: int
+
+
+class LineItemOut(BaseModel):
+    id: uuid.UUID
+    description: str
+    price_cents: int
+    position: int
+    claims: list[ClaimOut]
+
+
+# Only what the table needs to see. Phone, email and token_hash stay out on purpose.
+class CrewMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    is_captain: bool
+
+
+class BillOut(BaseModel):
+    share_code: str
+    status: str
+    restaurant_name: str | None
+    subtotal_cents: int
+    tax_cents: int
+    tip_cents: int
+    total_cents: int
+    split_tip: bool
+    items: list[LineItemOut]
+    crew: list[CrewMemberOut]
+
+
+# The token is only ever returned here and in JoinResponse. Only its hash is stored.
+class BillCreated(BaseModel):
+    bill: BillOut
+    crew_member_id: uuid.UUID
+    token: str
+
+
+class JoinResponse(BaseModel):
+    crew_member_id: uuid.UUID
+    token: str
+
+
+class ClaimResponse(BaseModel):
+    line_item_id: uuid.UUID
+    crew_member_id: uuid.UUID
+    shares: int
+
+
+class PersonTotalOut(BaseModel):
+    crew_member_id: uuid.UUID
+    name: str
+    subtotal_cents: int
+    tax_cents: int
+    tip_cents: int
+    total_cents: int
+
+
+class BillTotals(BaseModel):
+    people: list[PersonTotalOut]
+    # These are counted as the Captain's in people, so the Captain can be warned about them.
+    unclaimed_item_ids: list[uuid.UUID]
