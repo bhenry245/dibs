@@ -1,6 +1,12 @@
 # Real receipt photos can show locations, card digits and names
 backend/receipt-samples/
 
+# Terraform: state can contain secrets. The lock file stays tracked so versions match everywhere.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
 # Python
 .venv/
 __pycache__/
