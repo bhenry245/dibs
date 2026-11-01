@@ -13,6 +13,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Predictable constraint names (e.g. uq_captain_email) instead of ones Postgres
@@ -71,6 +72,9 @@ class Bill(Base):
     restaurant_name: Mapped[str | None] = mapped_column(String(200))
     # Only set once receipt photos arrive in Milestone 3.
     receipt_s3_key: Mapped[str | None] = mapped_column(String(1024))
+    # What the scan found, kept for the Captain's review. Neither one affects the money.
+    printed_total_cents: Mapped[int | None]
+    receipt_warnings: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     subtotal_cents: Mapped[int] = mapped_column(server_default="0")
     tax_cents: Mapped[int] = mapped_column(server_default="0")
     tip_cents: Mapped[int] = mapped_column(server_default="0")
@@ -140,3 +144,13 @@ class Claim(Base):
         ForeignKey("crew_member.id", ondelete="CASCADE"), index=True
     )
     shares: Mapped[int] = mapped_column(server_default="1")
+
+
+# One attempt to read a receipt. Failed scans cost money too, so bills alone can't count them.
+class ReceiptScan(Base):
+    __tablename__ = "receipt_scan"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

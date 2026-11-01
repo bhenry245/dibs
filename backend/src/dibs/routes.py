@@ -1,4 +1,4 @@
-# The Milestone 2 API: create a bill, join it, call dibs, and see what everyone owes.
+# The core API: create a bill, join it, call dibs, and see what everyone owes.
 
 import hashlib
 import secrets
@@ -18,6 +18,7 @@ from dibs.money import Item, split_bill
 from dibs.schemas import (
     BillCreate,
     BillCreated,
+    BillDetails,
     BillOut,
     BillTotals,
     ClaimOut,
@@ -162,25 +163,19 @@ async def find_or_create_captain(session: AsyncSession, email: str, name: str) -
     return (await session.scalars(select(Captain).where(Captain.email == email))).one()
 
 
-# A bill typed in by hand starts OPEN: DRAFT is for reviewing the AI's reading of a receipt,
-# which arrives in Milestone 3.
-@router.post("/bills", status_code=status.HTTP_201_CREATED)
-async def create_bill(body: BillCreate, session: Session) -> BillCreated:
-    captain = await find_or_create_captain(session, body.captain_email, body.captain_name)
-    subtotal_cents = sum(item.price_cents for item in body.items)
-    bill = Bill(
-        captain_id=captain.id,
-        status="OPEN",
-        restaurant_name=body.restaurant_name,
-        subtotal_cents=subtotal_cents,
-        tax_cents=body.tax_cents,
-        tip_cents=body.tip_cents,
-        total_cents=subtotal_cents + body.tax_cents + body.tip_cents,
-        split_tip=body.split_tip,
-    )
-    session.add(bill)
-    await session.flush()  # Sends the insert now, so bill.id exists for the rows below.
+# Sets everything a bill's details decide. The server works out the totals, so they can't disagree
+# with the items.
+def apply_details(bill: Bill, details: BillDetails) -> None:
+    subtotal_cents = sum(item.price_cents for item in details.items)
+    bill.restaurant_name = details.restaurant_name
+    bill.subtotal_cents = subtotal_cents
+    bill.tax_cents = details.tax_cents
+    bill.tip_cents = details.tip_cents
+    bill.total_cents = subtotal_cents + details.tax_cents + details.tip_cents
+    bill.split_tip = details.split_tip
 
+
+def add_items(session: AsyncSession, bill: Bill, details: BillDetails) -> None:
     session.add_all(
         LineItem(
             bill_id=bill.id,
@@ -188,17 +183,38 @@ async def create_bill(body: BillCreate, session: Session) -> BillCreated:
             price_cents=item.price_cents,
             position=position,
         )
-        for position, item in enumerate(body.items)
+        for position, item in enumerate(details.items)
     )
+
+
+# Returns the row and its token. The token is only ever available here, because only its hash is
+# stored.
+def add_captain_row(
+    session: AsyncSession, bill: Bill, name: str, email: str
+) -> tuple[CrewMember, str]:
     token = secrets.token_urlsafe(32)
     captain_row = CrewMember(
         bill_id=bill.id,
-        name=body.captain_name,
-        email=body.captain_email,
+        name=name,
+        email=email,
         token_hash=hash_token(token),
         is_captain=True,
     )
     session.add(captain_row)
+    return captain_row, token
+
+
+# A bill typed in by hand starts OPEN: DRAFT is for reviewing the AI's reading of a receipt.
+@router.post("/bills", status_code=status.HTTP_201_CREATED)
+async def create_bill(body: BillCreate, session: Session) -> BillCreated:
+    captain = await find_or_create_captain(session, body.captain_email, body.captain_name)
+    bill = Bill(captain_id=captain.id, status="OPEN")
+    apply_details(bill, body)
+    session.add(bill)
+    await session.flush()  # Sends the insert now, so bill.id exists for the rows below.
+
+    add_items(session, bill, body)
+    captain_row, token = add_captain_row(session, bill, body.captain_name, body.captain_email)
     await session.flush()
     bill_out = await build_bill_out(session, bill)
     await session.commit()

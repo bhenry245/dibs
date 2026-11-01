@@ -92,6 +92,20 @@ class ReceiptServiceError(Exception):
     pass
 
 
+# Works out an image's format from its first bytes. A browser's stated type can be wrong, and
+# sending Claude the wrong type fails the request.
+def detect_media_type(image: bytes) -> str | None:
+    if image.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if image.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if image[:4] == b"RIFF" and image[8:12] == b"WEBP":
+        return "image/webp"
+    if image[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return None
+
+
 def format_dollars(cents: int) -> str:
     sign = "-" if cents < 0 else ""
     dollars, pennies = divmod(abs(cents), 100)

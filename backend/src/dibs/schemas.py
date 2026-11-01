@@ -2,7 +2,7 @@
 # column (like token_hash) can never end up in a response by accident.
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import AfterValidator, BaseModel, EmailStr, Field, StringConstraints, model_validator
 
@@ -28,9 +28,8 @@ class LineItemCreate(BaseModel):
     price_cents: Cents
 
 
-class BillCreate(BaseModel):
-    captain_email: Email
-    captain_name: Name
+# What a bill says, whether it was typed in or corrected after a scan.
+class BillDetails(BaseModel):
     restaurant_name: (
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
         | None
@@ -42,10 +41,15 @@ class BillCreate(BaseModel):
 
     # Tax and tip are split in proportion to item prices, so they need a price to split against.
     @model_validator(mode="after")
-    def check_something_to_split_against(self) -> "BillCreate":
+    def check_something_to_split_against(self) -> Self:
         if (self.tax_cents or self.tip_cents) and not any(i.price_cents for i in self.items):
             raise ValueError("tax and tip need at least one item with a price")
         return self
+
+
+class BillCreate(BillDetails):
+    captain_email: Email
+    captain_name: Name
 
 
 class JoinRequest(BaseModel):
@@ -101,6 +105,20 @@ class BillOut(BaseModel):
 # The token is only ever returned here and in JoinResponse. Only its hash is stored.
 class BillCreated(BaseModel):
     bill: BillOut
+    crew_member_id: uuid.UUID
+    token: str
+
+
+# A scanned bill while the Captain reviews it. Showing the printed total next to the bill's own
+# lets them spot a misread, but they decide what's right.
+class DraftOut(BaseModel):
+    bill: BillOut
+    warnings: list[str]
+    printed_total_cents: int | None
+
+
+class DraftCreated(BaseModel):
+    draft: DraftOut
     crew_member_id: uuid.UUID
     token: str
 

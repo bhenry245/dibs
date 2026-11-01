@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://dibs:dibs@localhost:5433/dibs"
     anthropic_api_key: str | None = None
     receipt_model: str = "claude-sonnet-5-5"
+    # A cap on scans across the whole app, because each one costs money and there are no logins yet.
+    receipt_daily_limit: int = 50
 
 
 settings = Settings()
