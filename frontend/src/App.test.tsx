@@ -15,13 +15,30 @@ const CREATED = {
   token: 'secret-token',
 }
 
-// Answers the page's health check, and hands everything else to createResponse.
+// Answers the health check and the pages opened after creating, and hands creating the bill itself
+// to createResponse.
 function stubFetch(createResponse: () => unknown = () => jsonResponse(201, CREATED)): Mock {
-  const fetchMock = vi.fn(async (url: string) =>
-    url === '/api/health' ? jsonResponse(200, { status: 'ok' }) : createResponse(),
-  )
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url === '/api/health') return jsonResponse(200, { status: 'ok' })
+    if (url.endsWith('/totals')) return jsonResponse(200, { people: [], unclaimed_item_ids: [] })
+    if (url === '/api/bills/abc123') {
+      return jsonResponse(200, {
+        ...CREATED.bill,
+        status: 'OPEN',
+        restaurant_name: null,
+        total_cents: 0,
+        items: [],
+        crew: [],
+      })
+    }
+    return createResponse()
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function landedOnSharePage() {
+  return screen.findByRole('heading', { name: 'Have everyone scan this' })
 }
 
 function renderAt(path: string) {
@@ -81,7 +98,7 @@ test('creates a bill with amounts in cents and opens the share page', async () =
   await user.type(screen.getByLabelText('Tip'), '$7.80')
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
-  expect(await screen.findByText('abc123')).toBeInTheDocument()
+  expect(await landedOnSharePage()).toBeInTheDocument()
   expect(sentBill(fetchMock)).toEqual({
     captain_email: 'brandon@example.com',
     captain_name: 'Brandon',
@@ -104,7 +121,7 @@ test('keeps the token on the device, because the API only sends it once', async 
   await fillRequiredFields(user)
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
-  await screen.findByText('abc123')
+  await landedOnSharePage()
   expect(JSON.parse(localStorage.getItem('dibs.identity.abc123')!)).toEqual({
     crewMemberId: 'crew-1',
     token: 'secret-token',
@@ -120,7 +137,7 @@ test('blank optional fields become null and zero, and blank rows are skipped', a
   await user.click(screen.getByRole('button', { name: 'Add item' }))
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
-  await screen.findByText('abc123')
+  await landedOnSharePage()
   expect(sentBill(fetchMock)).toMatchObject({
     restaurant_name: null,
     tax_cents: 0,
@@ -138,7 +155,7 @@ test('unticking the box tells the API the Captain covers the tip', async () => {
   await user.click(screen.getByLabelText('Also split the tip'))
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
-  await screen.findByText('abc123')
+  await landedOnSharePage()
   expect(sentBill(fetchMock).split_tip).toBe(false)
 })
 
@@ -156,7 +173,7 @@ test('removing an item keeps the text in the other rows', async () => {
   expect(screen.getByLabelText('Item 1')).toHaveValue('Salad')
   await user.click(screen.getByRole('button', { name: 'Create bill' }))
 
-  await screen.findByText('abc123')
+  await landedOnSharePage()
   expect(sentBill(fetchMock).items).toEqual([{ description: 'Salad', price_cents: 1000 }])
 })
 
@@ -242,5 +259,5 @@ test('a second tap while sending does not create a second bill', async () => {
 
   expect(fetchMock.mock.calls.filter(([url]) => url === '/api/bills')).toHaveLength(1)
   finish(jsonResponse(201, CREATED))
-  await screen.findByText('abc123')
+  await landedOnSharePage()
 })

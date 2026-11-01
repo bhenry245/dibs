@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type Bill, claimItem, describeError, getTotals, unclaimItem } from '../api.ts'
 import type { Identity } from '../identity.ts'
+import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 
 type Item = Bill['items'][number]
@@ -80,20 +81,7 @@ function YourTotal({ bill, myId, isCaptain }: { bill: Bill; myId: string; isCapt
   }
 
   if (query.isError) {
-    return (
-      <div className="flex flex-col gap-2">
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-          {describeError(query.error)}
-        </p>
-        <button
-          type="button"
-          className="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
-          onClick={() => query.refetch()}
-        >
-          Try again
-        </button>
-      </div>
-    )
+    return <LoadError error={query.error} onRetry={() => query.refetch()} />
   }
 
   const mine = query.data.people.find((person) => person.crew_member_id === myId)

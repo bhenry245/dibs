@@ -3,7 +3,9 @@ import { type SyntheticEvent, useState } from 'react'
 import { useParams } from 'react-router'
 import { ApiError, type Bill, describeError, getBill, joinBill } from '../api.ts'
 import { type Identity, loadIdentity, saveIdentity } from '../identity.ts'
+import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
+import Page from '../Page.tsx'
 import { INPUT_CLASS } from '../styles.ts'
 import ClaimItems from './ClaimItems.tsx'
 
@@ -153,14 +155,6 @@ function JoinForm({
   )
 }
 
-function Page({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen bg-gray-50 px-4 py-6">
-      <div className="mx-auto flex max-w-md flex-col gap-6">{children}</div>
-    </main>
-  )
-}
-
 // What the QR code opens: the bill, plus a way in for anyone who hasn't joined yet.
 function BillPage() {
   const shareCode = useParams().shareCode!
@@ -192,16 +186,7 @@ function BillPage() {
     }
     return (
       <Page>
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-          {describeError(query.error)}
-        </p>
-        <button
-          type="button"
-          className="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
-          onClick={() => query.refetch()}
-        >
-          Try again
-        </button>
+        <LoadError error={query.error} onRetry={() => query.refetch()} />
       </Page>
     )
   }
