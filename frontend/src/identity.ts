@@ -13,3 +13,12 @@ export function saveIdentity(shareCode: string, identity: Identity): void {
     // Storage can be blocked, such as in some private windows. The bill still exists, so carry on.
   }
 }
+
+export function loadIdentity(shareCode: string): Identity | null {
+  try {
+    const saved = localStorage.getItem(`dibs.identity.${shareCode}`)
+    return saved ? JSON.parse(saved) : null
+  } catch {
+    return null
+  }
+}

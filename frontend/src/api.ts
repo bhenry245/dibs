@@ -35,6 +35,17 @@ export type BillCreated = {
   token: string
 }
 
+export type JoinRequest = {
+  name: string
+  phone: string | null
+  email: string | null
+}
+
+export type JoinResponse = {
+  crew_member_id: string
+  token: string
+}
+
 // The API answered with an error. Its message is safe to show to the user.
 export class ApiError extends Error {
   status: number
@@ -43,6 +54,20 @@ export class ApiError extends Error {
     super(message)
     this.status = status
   }
+}
+
+// Text to show the user for a failed request. Anything but an ApiError means we got no answer.
+export function describeError(error: Error): string {
+  return error instanceof ApiError
+    ? error.message
+    : "Couldn't reach Dibs. Check your connection and try again."
+}
+
+// Retry when the server or network might recover, but not when the API has given its answer:
+// a bill that doesn't exist won't appear by asking again.
+export function shouldRetry(failureCount: number, error: Error): boolean {
+  const apiSaidNo = error instanceof ApiError && error.status < 500
+  return !apiSaidNo && failureCount < 3
 }
 
 // FastAPI sends detail as a string for errors we raise, and as a list for failed validation.
@@ -68,6 +93,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function createBill(body: BillCreate): Promise<BillCreated> {
   return request('/bills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function getBill(shareCode: string): Promise<Bill> {
+  return request(`/bills/${encodeURIComponent(shareCode)}`)
+}
+
+export function joinBill(shareCode: string, body: JoinRequest): Promise<JoinResponse> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -1,10 +1,11 @@
 import { useMutation } from '@tanstack/react-query'
 import { type SyntheticEvent, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ApiError, type BillCreate, createBill } from '../api.ts'
+import { type BillCreate, createBill, describeError } from '../api.ts'
 import ApiStatus from '../ApiStatus.tsx'
 import { saveIdentity } from '../identity.ts'
 import { parseDollars } from '../money.ts'
+import { INPUT_CLASS } from '../styles.ts'
 
 type ItemRow = {
   id: number
@@ -19,9 +20,6 @@ function newRow(): ItemRow {
   nextRowId += 1
   return { id: nextRowId, description: '', price: '' }
 }
-
-const INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900'
 
 function CreateBillPage() {
   const navigate = useNavigate()
@@ -91,13 +89,7 @@ function CreateBillPage() {
     mutation.mutate(body)
   }
 
-  let errorMessage = formError
-  if (!errorMessage && mutation.error) {
-    errorMessage =
-      mutation.error instanceof ApiError
-        ? mutation.error.message
-        : "Couldn't reach Dibs. Check your connection and try again."
-  }
+  const errorMessage = formError ?? (mutation.error && describeError(mutation.error))
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6">

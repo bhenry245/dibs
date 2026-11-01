@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router'
+import BillPage from './pages/BillPage.tsx'
 import CreateBillPage from './pages/CreateBillPage.tsx'
 import ShareBillPage from './pages/ShareBillPage.tsx'
 
@@ -7,6 +8,7 @@ function App() {
     <Routes>
       <Route path="/" element={<CreateBillPage />} />
       <Route path="/bills/:shareCode/share" element={<ShareBillPage />} />
+      <Route path="/b/:shareCode" element={<BillPage />} />
     </Routes>
   )
 }
