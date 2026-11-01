@@ -36,7 +36,10 @@ function stubApi({
   join = (): unknown => jsonResponse(201, JOINED),
 } = {}): Mock {
   let joined = false
-  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/totals')) {
+      return jsonResponse(200, { people: [], unclaimed_item_ids: [] })
+    }
     if (init?.method === 'POST') {
       const response = await join()
       joined = true

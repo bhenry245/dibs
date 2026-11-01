@@ -46,6 +46,18 @@ export type JoinResponse = {
   token: string
 }
 
+export type BillTotals = {
+  people: {
+    crew_member_id: string
+    name: string
+    subtotal_cents: number
+    tax_cents: number
+    tip_cents: number
+    total_cents: number
+  }[]
+  unclaimed_item_ids: string[]
+}
+
 // The API answered with an error. Its message is safe to show to the user.
 export class ApiError extends Error {
   status: number
@@ -88,7 +100,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new ApiError(response.status, await readErrorMessage(response))
   }
-  return response.json()
+  // 204 means success with an empty body, so there's no JSON to read.
+  return response.status === 204 ? (undefined as T) : response.json()
 }
 
 export function createBill(body: BillCreate): Promise<BillCreated> {
@@ -108,5 +121,24 @@ export function joinBill(shareCode: string, body: JoinRequest): Promise<JoinResp
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+export function getTotals(shareCode: string): Promise<BillTotals> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/totals`)
+}
+
+export function claimItem(itemId: string, token: string): Promise<void> {
+  return request(`/items/${itemId}/claim`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ shares: 1 }),
+  })
+}
+
+export function unclaimItem(itemId: string, token: string): Promise<void> {
+  return request(`/items/${itemId}/claim`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }

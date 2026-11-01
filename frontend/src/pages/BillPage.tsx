@@ -5,18 +5,24 @@ import { ApiError, type Bill, describeError, getBill, joinBill } from '../api.ts
 import { type Identity, loadIdentity, saveIdentity } from '../identity.ts'
 import { formatCents } from '../money.ts'
 import { INPUT_CLASS } from '../styles.ts'
+import ClaimItems from './ClaimItems.tsx'
 
-function BillSummary({ bill }: { bill: Bill }) {
+function ItemList({ bill }: { bill: Bill }) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {bill.items.map((item) => (
+        <li key={item.id} className="flex justify-between gap-4 text-gray-900">
+          <span className="min-w-0 break-words">{item.description}</span>
+          <span>{formatCents(item.price_cents)}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function BillAmounts({ bill }: { bill: Bill }) {
   return (
     <section className="flex flex-col gap-3">
-      <ul className="flex flex-col gap-2">
-        {bill.items.map((item) => (
-          <li key={item.id} className="flex justify-between gap-4 text-gray-900">
-            <span className="min-w-0 break-words">{item.description}</span>
-            <span>{formatCents(item.price_cents)}</span>
-          </li>
-        ))}
-      </ul>
       <dl className="flex flex-col gap-1 border-t border-gray-300 pt-3 text-sm text-gray-700">
         <div className="flex justify-between">
           <dt>Tax</dt>
@@ -204,11 +210,19 @@ function BillPage() {
   // Check the saved identity against the bill, in case it's for someone no longer on it.
   const me = identity && bill.crew.find((member) => member.id === identity.crewMemberId)
 
-  let nextStep = <JoinForm shareCode={shareCode} onJoined={setIdentity} />
-  if (me) {
-    nextStep = <p className="font-semibold text-gray-900">You&apos;re in, {me.name}.</p>
-  } else if (bill.status !== 'OPEN') {
-    nextStep = <p className="text-gray-700">This bill is locked, so nobody new can join.</p>
+  if (me && identity) {
+    return (
+      <Page>
+        <header>
+          <p className="text-sm font-semibold text-gray-600">Dibs</p>
+          <h1 className="text-3xl font-bold tracking-tight break-words text-gray-900">
+            {bill.restaurant_name ?? 'Your bill'}
+          </h1>
+        </header>
+        <ClaimItems bill={bill} identity={identity} />
+        <BillAmounts bill={bill} />
+      </Page>
+    )
   }
 
   return (
@@ -219,8 +233,13 @@ function BillPage() {
           {bill.restaurant_name ?? 'Your bill'}
         </h1>
       </header>
-      <BillSummary bill={bill} />
-      {nextStep}
+      <ItemList bill={bill} />
+      <BillAmounts bill={bill} />
+      {bill.status === 'OPEN' ? (
+        <JoinForm shareCode={shareCode} onJoined={setIdentity} />
+      ) : (
+        <p className="text-gray-700">This bill is locked, so nobody new can join.</p>
+      )}
     </Page>
   )
 }
