@@ -1,3 +1,6 @@
+# Real receipt photos can show locations, card digits and names
+backend/receipt-samples/
+
 # Python
 .venv/
 __pycache__/

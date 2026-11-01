@@ -210,7 +210,7 @@ flowchart LR
 ## 10. Receipt parsing
 
 1. The browser asks the API for a **presigned S3 URL** and uploads the photo directly to S3. Large images never pass through the API.
-2. The API sends the image to **Claude (vision)** and asks for **structured output** that matches a strict JSON schema: restaurant name, line items (description, quantity, unit price), subtotal, tax, tip, total.
+2. The API sends the image to **Claude (vision)** and asks for **structured output** that matches a strict JSON schema: restaurant name, line items (description, quantity, line total), subtotal, tax, tip, total. Line totals are what receipts actually print, so there is less for the model to get wrong. Lines with a quantity are then split into units using the same exact-cent `allocate` as the money math.
 3. The response is validated with **Pydantic**, then checked against itself:
    - Do the line items add up to the subtotal?
    - Does subtotal + tax + tip equal the total?
@@ -355,6 +355,7 @@ Notes:
 2. **Discounts and service charges:** allocate them in proportion to subtotal (current plan), or let the Captain choose?
 3. **Editing after OPEN:** can the Captain edit items once the crew are claiming? Proposal: yes, but claims on an edited item are cleared and the people affected are notified.
 4. **Domain name.**
+5. **Currencies:** v1 assumes US dollars. Supporting others needs a currency code on each bill, and display and parsing that know each currency's decimals (yen has none).
 
 ## 17. Tech stack
 
