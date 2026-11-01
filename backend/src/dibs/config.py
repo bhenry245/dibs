@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     receipt_model: str = "claude-sonnet-5-5"
     # A cap on scans across the whole app, because each one costs money and there are no logins yet.
     receipt_daily_limit: int = 50
+    # Uploads cost storage rather than a Claude call, but they still need a cap.
+    receipt_upload_daily_limit: int = 100
+    # Set by Terraform's receipts_bucket_name output. Without it, scanning is switched off.
+    receipts_bucket: str | None = None
+    aws_region: str = "us-east-2"
+    # Your login locally. Production leaves this empty and uses the server's own AWS role.
+    aws_profile: str | None = None
 
 
 settings = Settings()

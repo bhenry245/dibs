@@ -61,6 +61,12 @@ export type DraftCreated = {
   token: string
 }
 
+export type ReceiptUpload = {
+  upload_id: string
+  url: string
+  fields: Record<string, string>
+}
+
 export type JoinRequest = {
   name: string
   phone: string | null
@@ -143,17 +149,36 @@ export function createBill(body: BillCreate): Promise<BillCreated> {
   })
 }
 
-// No Content-Type header here: the browser adds it, with the boundary that separates the fields.
+export function createReceiptUpload(): Promise<ReceiptUpload> {
+  return request('/receipts/upload-url', { method: 'POST' })
+}
+
+// Sends the photo straight to S3, not through the API. S3 requires the file to be the last field,
+// and the browser adds the Content-Type header with the boundary that separates the fields.
+export async function uploadPhoto(upload: ReceiptUpload, photo: Blob): Promise<void> {
+  const form = new FormData()
+  for (const [name, value] of Object.entries(upload.fields)) form.append(name, value)
+  form.append('file', photo, 'receipt.jpg')
+  const response = await fetch(upload.url, { method: 'POST', body: form })
+  if (!response.ok) {
+    throw new ApiError(response.status, "Your photo couldn't be uploaded. Try again.")
+  }
+}
+
 export function createBillFromReceipt(
-  photo: Blob,
+  uploadId: string,
   captainEmail: string,
   captainName: string,
 ): Promise<DraftCreated> {
-  const form = new FormData()
-  form.append('photo', photo, 'receipt.jpg')
-  form.append('captain_email', captainEmail)
-  form.append('captain_name', captainName)
-  return request('/bills/from-receipt', { method: 'POST', body: form })
+  return request('/bills/from-receipt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      upload_id: uploadId,
+      captain_email: captainEmail,
+      captain_name: captainName,
+    }),
+  })
 }
 
 export function getDraft(shareCode: string, token: string): Promise<Draft> {

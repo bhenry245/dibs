@@ -1,18 +1,22 @@
 import base64
 import json
 import uuid
+from datetime import UTC, datetime
 
 import anthropic
+import boto3
 import httpx2
 import pytest
+from botocore.exceptions import NoCredentialsError
 from httpx import AsyncClient
+from moto import mock_aws
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dibs.config import settings
-from dibs.draft_routes import get_receipt_client
+from dibs.draft_routes import get_receipt_client, get_s3_client
 from dibs.main import app
-from dibs.models import Bill, CrewMember, ReceiptScan
+from dibs.models import Bill, CrewMember, ReceiptScan, ReceiptUpload
 from dibs.receipts import MAX_IMAGE_BYTES, detect_media_type
 from dibs.routes import hash_token
 
@@ -90,16 +94,51 @@ def claude(monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides.pop(get_receipt_client, None)
 
 
+# A fake S3, so these tests can never touch a real bucket, whatever login is on this machine.
+BUCKET = "test-receipts"
+storage = None
+
+
+@pytest.fixture(autouse=True)
+def s3(monkeypatch: pytest.MonkeyPatch):
+    global storage
+    monkeypatch.setattr(settings, "receipts_bucket", BUCKET)
+    monkeypatch.setattr(settings, "receipt_upload_daily_limit", 1_000_000)
+    with mock_aws():
+        storage = boto3.client(
+            "s3",
+            region_name="us-east-2",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        )
+        storage.create_bucket(
+            Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": "us-east-2"}
+        )
+        app.dependency_overrides[get_s3_client] = lambda: storage
+        yield storage
+        app.dependency_overrides.pop(get_s3_client, None)
+
+
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+# What the browser does: asks for a signed upload, then puts the photo in the bucket.
+async def upload_photo(client: AsyncClient, photo: bytes = JPEG) -> str:
+    response = await client.post("/receipts/upload-url")
+    assert response.status_code == 201, response.text
+    upload = response.json()
+    storage.put_object(Bucket=BUCKET, Key=upload["fields"]["key"], Body=photo)
+    return upload["upload_id"]
+
+
+async def send_scan(client: AsyncClient, photo: bytes = JPEG, form: dict = FORM):
+    upload_id = await upload_photo(client, photo)
+    return await client.post("/bills/from-receipt", json={"upload_id": upload_id} | form)
+
+
 async def scan(client: AsyncClient, photo: bytes = JPEG, **form) -> dict:
-    response = await client.post(
-        "/bills/from-receipt",
-        files={"photo": ("receipt.jpg", photo, "image/jpeg")},
-        data=FORM | form,
-    )
+    response = await send_scan(client, photo, FORM | form)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -246,7 +285,7 @@ async def test_readings_that_do_not_fit_a_bill_are_rejected_cleanly(
     claude.reading = READING | {"lines": lines}
     bills_before = await session.scalar(select(func.count()).select_from(Bill))
 
-    response = await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=FORM)
+    response = await send_scan(client, photo=JPEG, form=FORM)
 
     assert response.status_code == 422
     assert "couldn't be read" in response.json()["detail"]
@@ -258,9 +297,7 @@ async def test_something_that_is_not_a_receipt_gets_a_clear_error(
 ):
     claude.reading = READING | {"is_receipt": False, "lines": []}
 
-    response = await client.post(
-        "/bills/from-receipt", files={"photo": ("dog.jpg", JPEG)}, data=FORM
-    )
+    response = await send_scan(client, photo=JPEG, form=FORM)
 
     assert response.status_code == 422
     assert "doesn't look like a receipt" in response.json()["detail"]
@@ -271,7 +308,7 @@ async def test_claude_being_down_is_a_503(client: AsyncClient, claude: FakeClaud
         529, json={"type": "error", "error": {"type": "overloaded_error", "message": "busy"}}
     )
 
-    response = await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=FORM)
+    response = await send_scan(client, photo=JPEG, form=FORM)
 
     assert response.status_code == 503
 
@@ -281,7 +318,7 @@ async def test_scanning_without_an_api_key_is_a_clear_503(
 ):
     monkeypatch.setattr(settings, "anthropic_api_key", None)
 
-    response = await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=FORM)
+    response = await send_scan(client, photo=JPEG, form=FORM)
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Receipt scanning isn't set up."}
@@ -302,9 +339,7 @@ async def test_bad_files_are_rejected_without_spending_anything(
 ):
     before = await scan_count(session)
 
-    response = await client.post(
-        "/bills/from-receipt", files={"photo": ("r.jpg", photo)}, data=FORM
-    )
+    response = await send_scan(client, photo=photo, form=FORM)
 
     assert response.status_code == 422
     assert message in response.json()["detail"]
@@ -324,7 +359,7 @@ async def test_bad_files_are_rejected_without_spending_anything(
 async def test_bad_captain_details_are_rejected_before_calling_claude(
     client: AsyncClient, claude: FakeClaude, form: dict
 ):
-    response = await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=form)
+    response = await send_scan(client, photo=JPEG, form=form)
 
     assert response.status_code == 422
     assert claude.requests == []
@@ -340,7 +375,7 @@ async def test_daily_limit_stops_scans_before_calling_claude(
     await scan(client)
     calls_after_first = len(claude.requests)
 
-    response = await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=FORM)
+    response = await send_scan(client, photo=JPEG, form=FORM)
 
     assert response.status_code == 429
     assert "Type this one in" in response.json()["detail"]
@@ -353,7 +388,7 @@ async def test_failed_scans_count_because_they_cost_money_too(
     before = await scan_count(session)
     claude.reading = READING | {"is_receipt": False, "lines": []}
 
-    await client.post("/bills/from-receipt", files={"photo": ("r.jpg", JPEG)}, data=FORM)
+    await send_scan(client, photo=JPEG, form=FORM)
 
     assert await scan_count(session) == before + 1
 
@@ -390,6 +425,173 @@ async def test_negative_fees_start_at_zero(client: AsyncClient, claude: FakeClau
     bill = (await scan(client))["draft"]["bill"]
 
     assert bill["fees_cents"] == 0
+
+
+# --- POST /receipts/upload-url ---
+
+
+async def test_upload_link_is_signed_with_limits_the_browser_cannot_change(
+    client: AsyncClient,
+):
+    response = await client.post("/receipts/upload-url")
+
+    assert response.status_code == 201
+    upload = response.json()
+    assert BUCKET in upload["url"]
+    assert upload["fields"]["key"] == f"receipts/{upload['upload_id']}.jpg"
+    policy = json.loads(base64.b64decode(upload["fields"]["policy"]))
+    conditions = policy["conditions"]
+    assert {"key": upload["fields"]["key"]} in conditions
+    assert {"Content-Type": "image/jpeg"} in conditions
+    assert ["content-length-range", 1, MAX_IMAGE_BYTES] in conditions
+
+
+async def test_upload_link_expires_within_five_minutes(client: AsyncClient):
+    upload = (await client.post("/receipts/upload-url")).json()
+
+    policy = json.loads(base64.b64decode(upload["fields"]["policy"]))
+
+    expires = datetime.fromisoformat(policy["expiration"].replace("Z", "+00:00"))
+    seconds_left = (expires - datetime.now(UTC)).total_seconds()
+    assert 0 < seconds_left <= 300
+
+
+async def test_upload_link_does_not_reveal_the_secret_key(client: AsyncClient):
+    response = await client.post("/receipts/upload-url")
+
+    assert "testing" not in json.dumps(response.json()["fields"]["policy"])
+    assert "x-amz-signature" in response.json()["fields"]
+    assert not any("secret" in name.lower() for name in response.json()["fields"])
+
+
+async def test_every_upload_gets_its_own_key(client: AsyncClient):
+    first = (await client.post("/receipts/upload-url")).json()
+    second = (await client.post("/receipts/upload-url")).json()
+
+    assert first["fields"]["key"] != second["fields"]["key"]
+
+
+async def test_upload_links_are_limited_per_day(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    recent = await session.scalar(select(func.count()).select_from(ReceiptUpload))
+    monkeypatch.setattr(settings, "receipt_upload_daily_limit", recent + 1)
+
+    assert (await client.post("/receipts/upload-url")).status_code == 201
+    assert (await client.post("/receipts/upload-url")).status_code == 429
+
+
+async def test_scanning_with_no_bucket_set_is_a_clear_503(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    app.dependency_overrides.pop(get_s3_client, None)
+    monkeypatch.setattr(settings, "receipts_bucket", None)
+
+    response = await client.post("/receipts/upload-url")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Receipt scanning isn't set up."}
+
+
+async def test_a_login_that_stops_working_is_a_503_rather_than_a_crash(client: AsyncClient):
+    class BrokenS3:
+        def generate_presigned_post(self, **_):
+            raise NoCredentialsError
+
+    app.dependency_overrides[get_s3_client] = BrokenS3
+
+    response = await client.post("/receipts/upload-url")
+
+    assert response.status_code == 503
+
+
+# --- Using an upload ---
+
+
+async def test_the_photo_scanned_is_the_one_in_the_bucket_and_its_key_is_kept(
+    client: AsyncClient, claude: FakeClaude, session: AsyncSession
+):
+    created = await scan(client, photo=JPEG + b"-this-one")
+
+    image = json.loads(claude.requests[0].content)["messages"][0]["content"][0]
+    assert base64.b64decode(image["source"]["data"]) == JPEG + b"-this-one"
+    bill = await session.scalar(
+        select(Bill).where(Bill.share_code == created["draft"]["bill"]["share_code"])
+    )
+    assert bill.receipt_s3_key.startswith("receipts/")
+
+
+async def test_an_unknown_upload_is_rejected_without_calling_claude(
+    client: AsyncClient, claude: FakeClaude
+):
+    response = await client.post(
+        "/bills/from-receipt", json={"upload_id": str(uuid.uuid4())} | FORM
+    )
+
+    assert response.status_code == 422
+    assert claude.requests == []
+
+
+async def test_an_upload_can_only_be_scanned_once(client: AsyncClient, claude: FakeClaude):
+    upload_id = await upload_photo(client)
+    body = {"upload_id": upload_id} | FORM
+
+    first = await client.post("/bills/from-receipt", json=body)
+    second = await client.post("/bills/from-receipt", json=body)
+
+    assert first.status_code == 201
+    assert second.status_code == 422
+    assert len(claude.requests) == 1
+
+
+async def test_a_scan_cannot_choose_another_file_in_the_bucket(
+    client: AsyncClient, claude: FakeClaude
+):
+    storage.put_object(Bucket=BUCKET, Key="receipts/someone-elses.jpg", Body=JPEG + b"-secret")
+    upload_id = await upload_photo(client)
+
+    await client.post(
+        "/bills/from-receipt",
+        json={"upload_id": upload_id, "key": "receipts/someone-elses.jpg"} | FORM,
+    )
+
+    image = json.loads(claude.requests[0].content)["messages"][0]["content"][0]
+    assert base64.b64decode(image["source"]["data"]) == JPEG
+
+
+async def test_a_photo_that_never_arrived_gets_a_clear_error(
+    client: AsyncClient, claude: FakeClaude
+):
+    upload = (await client.post("/receipts/upload-url")).json()
+
+    response = await client.post(
+        "/bills/from-receipt", json={"upload_id": upload["upload_id"]} | FORM
+    )
+
+    assert response.status_code == 422
+    assert "didn't finish uploading" in response.json()["detail"]
+    assert claude.requests == []
+
+
+async def test_s3_being_unreachable_is_a_503(client: AsyncClient, claude: FakeClaude):
+    upload_id = await upload_photo(client)
+
+    class BrokenS3:
+        def get_object(self, **_):
+            raise NoCredentialsError
+
+    app.dependency_overrides[get_s3_client] = BrokenS3
+
+    response = await client.post("/bills/from-receipt", json={"upload_id": upload_id} | FORM)
+
+    assert response.status_code == 503
+    assert claude.requests == []
+
+
+async def test_an_invalid_upload_id_is_rejected(client: AsyncClient, claude: FakeClaude):
+    response = await client.post("/bills/from-receipt", json={"upload_id": "nope"} | FORM)
+
+    assert response.status_code == 422
 
 
 # --- The crew can't see a draft ---

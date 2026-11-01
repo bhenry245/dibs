@@ -154,6 +154,19 @@ class Claim(Base):
     shares: Mapped[int] = mapped_column(server_default="1")
 
 
+# A signed upload the API handed out. The browser only ever refers to this row's id, so it can't
+# point a scan at any other file in the bucket, and used_at stops a photo being scanned twice.
+class ReceiptUpload(Base):
+    __tablename__ = "receipt_upload"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    s3_key: Mapped[str] = mapped_column(String(1024), unique=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 # One attempt to read a receipt. Failed scans cost money too, so bills alone can't count them.
 class ReceiptScan(Base):
     __tablename__ = "receipt_scan"

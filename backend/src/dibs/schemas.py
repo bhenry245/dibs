@@ -145,6 +145,19 @@ class DraftCreated(BaseModel):
     token: str
 
 
+class ReceiptUploadOut(BaseModel):
+    upload_id: uuid.UUID
+    # Where the browser sends the photo, and the signed fields it must send along with it.
+    url: str
+    fields: dict[str, str]
+
+
+class ReceiptScanRequest(BaseModel):
+    upload_id: uuid.UUID
+    captain_email: Email
+    captain_name: Name
+
+
 class JoinResponse(BaseModel):
     crew_member_id: uuid.UUID
     token: str

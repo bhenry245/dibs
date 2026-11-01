@@ -213,7 +213,7 @@ flowchart LR
 
 ## 10. Receipt parsing
 
-1. The browser asks the API for a **presigned S3 URL** and uploads the photo directly to S3. Large images never pass through the API.
+1. The browser asks the API for a **presigned POST** and uploads the photo directly to S3. Large images never pass through the API. The signature limits the file's name, type and size, and expires after 5 minutes. The browser then refers to the upload by an ID, so it can't point a scan at any other file, and each upload can only be scanned once.
 2. The API sends the image to **Claude (vision)** and asks for **structured output** that matches a strict JSON schema: restaurant name, line items (description, quantity, line total), subtotal, tax, tip, total. Line totals are what receipts actually print, so there is less for the model to get wrong. Lines with a quantity are then split into units using the same exact-cent `allocate` as the money math.
 3. The response is validated with **Pydantic**, then checked against itself:
    - Do the line items add up to the subtotal?

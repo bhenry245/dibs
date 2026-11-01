@@ -36,10 +36,24 @@ function jsonResponse(status: number, body: unknown) {
   return { ok: status < 400, status, json: async () => body }
 }
 
-function stubApi(scan: () => unknown = () => jsonResponse(201, created())): Mock {
+const UPLOAD = {
+  upload_id: 'upload-1',
+  url: 'https://bucket.s3.test/',
+  fields: { key: 'receipts/upload-1.jpg', 'Content-Type': 'image/jpeg', policy: 'signed' },
+}
+
+function stubApi(
+  scan: () => unknown = () => jsonResponse(201, created()),
+  {
+    createUpload = (): unknown => jsonResponse(201, UPLOAD),
+    s3 = (): unknown => ({ ok: true, status: 204 }),
+  } = {},
+): Mock {
   const fetchMock = vi.fn(async (url: string) => {
     if (url === '/api/health') return jsonResponse(200, { status: 'ok' })
     if (url === '/api/bills/abc123/draft') return jsonResponse(200, DRAFT)
+    if (url === '/api/receipts/upload-url') return createUpload()
+    if (url === UPLOAD.url) return s3()
     return scan()
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -84,7 +98,7 @@ afterEach(() => {
   localStorage.clear()
 })
 
-test('sends the shrunk photo and your details, then opens the review screen', async () => {
+test('uploads the shrunk photo to S3, then scans it, then opens the review screen', async () => {
   const user = userEvent.setup({ applyAccept: false })
   const fetchMock = stubApi()
   renderCreatePage()
@@ -94,15 +108,59 @@ test('sends the shrunk photo and your details, then opens the review screen', as
 
   expect(await screen.findByRole('heading', { name: 'Check your receipt' })).toBeInTheDocument()
   expect(shrinkImage).toHaveBeenCalledWith(PHOTO)
-  const [, init] = scanCalls(fetchMock)[0]
-  expect(init.method).toBe('POST')
-  expect(init.headers).toBeUndefined()
-  const form = init.body as FormData
-  expect(form.get('captain_email')).toBe('brandon@example.com')
-  expect(form.get('captain_name')).toBe('Brandon')
-  const photo = form.get('photo') as File
+
+  const order = fetchMock.mock.calls
+    .map(([url]) => url)
+    .filter((url) => url !== '/api/health' && !url.endsWith('/draft'))
+  expect(order).toEqual([
+    '/api/receipts/upload-url',
+    UPLOAD.url,
+    '/api/bills/from-receipt',
+  ])
+
+  const [, s3Init] = fetchMock.mock.calls.find(([url]) => url === UPLOAD.url)!
+  expect(s3Init.method).toBe('POST')
+  expect(s3Init.headers).toBeUndefined()
+  const form = s3Init.body as FormData
+  expect([...form.keys()]).toEqual(['key', 'Content-Type', 'policy', 'file'])
+  expect(form.get('key')).toBe('receipts/upload-1.jpg')
+  const photo = form.get('file') as File
   expect(photo.name).toBe('receipt.jpg')
   expect(await photo.text()).toBe('small')
+
+  const [, scanInit] = scanCalls(fetchMock)[0]
+  expect(scanInit.method).toBe('POST')
+  expect(JSON.parse(scanInit.body)).toEqual({
+    upload_id: 'upload-1',
+    captain_email: 'brandon@example.com',
+    captain_name: 'Brandon',
+  })
+})
+
+test('a failed upload is explained, and the photo is never scanned', async () => {
+  const user = userEvent.setup({ applyAccept: false })
+  const fetchMock = stubApi(undefined, { s3: () => ({ ok: false, status: 403 }) })
+  renderCreatePage()
+
+  await fillInAboutYou(user)
+  await user.upload(fileInput(), PHOTO)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent("Your photo couldn't be uploaded.")
+  expect(scanCalls(fetchMock)).toHaveLength(0)
+})
+
+test('being unable to start an upload is explained, and nothing is uploaded', async () => {
+  const user = userEvent.setup({ applyAccept: false })
+  const fetchMock = stubApi(undefined, {
+    createUpload: () => jsonResponse(429, { detail: 'Too many receipts today.' }),
+  })
+  renderCreatePage()
+
+  await fillInAboutYou(user)
+  await user.upload(fileInput(), PHOTO)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Too many receipts today.')
+  expect(fetchMock.mock.calls.some(([url]) => url === UPLOAD.url)).toBe(false)
 })
 
 test('keeps the token on the device for the review screen', async () => {

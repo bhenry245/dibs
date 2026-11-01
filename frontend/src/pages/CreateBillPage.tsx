@@ -1,7 +1,13 @@
 import { useMutation } from '@tanstack/react-query'
 import { type ChangeEvent, type SyntheticEvent, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { createBill, createBillFromReceipt, describeError } from '../api.ts'
+import {
+  createBill,
+  createBillFromReceipt,
+  createReceiptUpload,
+  describeError,
+  uploadPhoto,
+} from '../api.ts'
 import ApiStatus from '../ApiStatus.tsx'
 import BillFields from '../BillFields.tsx'
 import { type BillFormValues, buildDetails, newRow } from '../billForm.ts'
@@ -39,8 +45,12 @@ function CreateBillPage() {
   })
 
   const scan = useMutation({
-    mutationFn: async (photo: File) =>
-      createBillFromReceipt(await shrinkImage(photo), captainEmail.trim(), captainName.trim()),
+    mutationFn: async (photo: File) => {
+      const shrunk = await shrinkImage(photo)
+      const upload = await createReceiptUpload()
+      await uploadPhoto(upload, shrunk)
+      return createBillFromReceipt(upload.upload_id, captainEmail.trim(), captainName.trim())
+    },
     onSuccess: (created) => {
       saveIdentity(created.draft.bill.share_code, {
         crewMemberId: created.crew_member_id,
