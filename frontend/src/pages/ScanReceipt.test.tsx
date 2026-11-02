@@ -195,15 +195,16 @@ test('keeps the token on the device for the review screen', async () => {
 test.each([
   ['name', 'Your email', 'brandon@example.com'],
   ['email', 'Your name', 'Brandon'],
-])('asks for your %s before spending a scan', async (_missing, label, value) => {
+])('scanning stays off without your %s', async (_missing, label, value) => {
   const user = userEvent.setup({ applyAccept: false })
   const fetchMock = stubApi()
   renderCreatePage()
 
   await user.type(screen.getByLabelText(label), value)
+  expect(fileInput()).toBeDisabled()
   await user.upload(fileInput(), PHOTO)
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Add your name and email first.')
+  expect(screen.getByText('Add your name and email to scan or create a bill.')).toBeInTheDocument()
   expect(shrinkImage).not.toHaveBeenCalled()
   expect(scanCalls(fetchMock)).toHaveLength(0)
 })

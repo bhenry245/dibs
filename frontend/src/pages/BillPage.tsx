@@ -14,6 +14,7 @@ import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
 import { INPUT_CLASS } from '../styles.ts'
 import { useLiveBill } from '../useLiveBill.ts'
+import { isValidEmail } from '../validation.ts'
 import ClaimItems from './ClaimItems.tsx'
 
 function ItemList({ bill }: { bill: Bill }) {
@@ -79,7 +80,7 @@ function JoinModal({
   const [email, setEmail] = useState('')
 
   // Greys out the button until the form can succeed. The API still checks everything itself.
-  const hasValidEmail = !email.trim() || /^\S+@\S+\.\S+$/.test(email.trim())
+  const hasValidEmail = !email.trim() || isValidEmail(email)
   const canJoin = Boolean(name.trim() && (phone.trim() || email.trim()) && hasValidEmail)
 
   const mutation = useMutation({

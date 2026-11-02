@@ -224,6 +224,39 @@ test('sends payment info with the bill', async () => {
   })
 })
 
+test('name and email are required, and marked with a red asterisk', () => {
+  stubFetch()
+  renderAt('/')
+
+  for (const label of ['Your name', 'Your email']) {
+    const input = screen.getByLabelText(label)
+    expect(input).toBeRequired()
+    expect(screen.getByText(label)).toHaveClass("after:content-['*']", 'after:text-red-600')
+  }
+  expect(screen.getByLabelText('Restaurant (optional)')).not.toBeRequired()
+})
+
+test('Create bill stays off until there is a name and a valid email', async () => {
+  const user = userEvent.setup()
+  stubFetch()
+  renderAt('/')
+  const create = screen.getByRole('button', { name: 'Create bill' })
+  expect(create).toBeDisabled()
+
+  await user.type(screen.getByLabelText('Your name'), '   ')
+  await user.type(screen.getByLabelText('Your email'), 'brandon@example.com')
+  expect(create).toBeDisabled()
+
+  await user.clear(screen.getByLabelText('Your name'))
+  await user.type(screen.getByLabelText('Your name'), 'Brandon')
+  expect(create).toBeEnabled()
+
+  await user.clear(screen.getByLabelText('Your email'))
+  await user.type(screen.getByLabelText('Your email'), 'not-an-email')
+  expect(create).toBeDisabled()
+  expect(screen.getByText('Add your name and email to scan or create a bill.')).toBeInTheDocument()
+})
+
 test('the restaurant field comes right after your email', () => {
   stubFetch()
   renderAt('/')

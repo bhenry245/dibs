@@ -13,7 +13,8 @@ import BillFields from '../BillFields.tsx'
 import { type BillFormValues, buildDetails, newRow } from '../billForm.ts'
 import { saveIdentity } from '../identity.ts'
 import { shrinkImage, UnreadableImageError } from '../image.ts'
-import { INPUT_CLASS } from '../styles.ts'
+import { INPUT_CLASS, REQUIRED_LABEL_CLASS } from '../styles.ts'
+import { isValidEmail } from '../validation.ts'
 
 function CreateBillPage() {
   const navigate = useNavigate()
@@ -31,7 +32,6 @@ function CreateBillPage() {
     zelle: '',
   }))
   const [formError, setFormError] = useState<string | null>(null)
-  const [scanHint, setScanHint] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: createBill,
@@ -66,18 +66,13 @@ function CreateBillPage() {
   })
 
   const isBusy = mutation.isPending || scan.isPending
+  const hasAboutYou = Boolean(captainName.trim() && isValidEmail(captainEmail))
 
   function handlePhotoChosen(event: ChangeEvent<HTMLInputElement>) {
     const photo = event.target.files?.[0]
     // Cleared so that choosing the same photo again after an error still counts as a change.
     event.target.value = ''
     if (!photo) return
-
-    if (!captainName.trim() || !captainEmail.trim()) {
-      setScanHint('Add your name and email first.')
-      return
-    }
-    setScanHint(null)
     scan.mutate(photo)
   }
 
@@ -98,8 +93,8 @@ function CreateBillPage() {
 
   const errorMessage = formError ?? (mutation.error && describeError(mutation.error))
 
-  let scanMessage = scanHint
-  if (!scanMessage && scan.error) {
+  let scanMessage = null
+  if (scan.error) {
     scanMessage =
       scan.error instanceof UnreadableImageError ? scan.error.message : describeError(scan.error)
   }
@@ -116,7 +111,7 @@ function CreateBillPage() {
           <section className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-gray-900">About you</h2>
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Your name
+              <span className={REQUIRED_LABEL_CLASS}>Your name</span>
               <input
                 className={INPUT_CLASS}
                 value={captainName}
@@ -127,7 +122,7 @@ function CreateBillPage() {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Your email
+              <span className={REQUIRED_LABEL_CLASS}>Your email</span>
               <input
                 className={INPUT_CLASS}
                 type="email"
@@ -151,7 +146,7 @@ function CreateBillPage() {
           <section className="flex flex-col gap-3">
             <label
               className={`cursor-pointer rounded-lg bg-gray-900 px-4 py-3 text-center font-semibold text-white focus-within:outline-2 focus-within:outline-offset-2 hover:bg-gray-700 ${
-                isBusy ? 'pointer-events-none opacity-50' : ''
+                isBusy || !hasAboutYou ? 'pointer-events-none opacity-50' : ''
               }`}
             >
               {scan.isPending ? 'Reading your receipt…' : 'Scan receipt'}
@@ -160,9 +155,14 @@ function CreateBillPage() {
                 accept="image/*"
                 className="sr-only"
                 onChange={handlePhotoChosen}
-                disabled={isBusy}
+                disabled={isBusy || !hasAboutYou}
               />
             </label>
+            {!hasAboutYou && (
+              <p className="text-center text-sm text-gray-600">
+                Add your name and email to scan or create a bill.
+              </p>
+            )}
             {scan.isPending && (
               <p role="status" className="text-center text-sm text-gray-600">
                 This can take up to a minute. Keep this page open.
@@ -191,7 +191,7 @@ function CreateBillPage() {
           <button
             type="submit"
             className="rounded-lg border border-gray-900 bg-white px-4 py-3 font-semibold text-gray-900 hover:bg-gray-100 disabled:opacity-50"
-            disabled={isBusy}
+            disabled={isBusy || !hasAboutYou}
           >
             {mutation.isPending ? 'Creating…' : 'Create bill'}
           </button>
