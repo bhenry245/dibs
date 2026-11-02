@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { type ChangeEvent, type SyntheticEvent, useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
+  type BillDetails,
   createBill,
   createBillFromReceipt,
   createReceiptUpload,
@@ -10,9 +11,10 @@ import {
 } from '../api.ts'
 import ApiStatus from '../ApiStatus.tsx'
 import BillFields from '../BillFields.tsx'
-import { type BillFormValues, buildDetails, newRow } from '../billForm.ts'
+import { type BillFormValues, buildDetails, hasPaymentInfo, newRow } from '../billForm.ts'
 import { saveIdentity } from '../identity.ts'
 import { shrinkImage, UnreadableImageError } from '../image.ts'
+import NoPaymentInfoModal from '../NoPaymentInfoModal.tsx'
 import { INPUT_CLASS, REQUIRED_LABEL_CLASS } from '../styles.ts'
 import { isValidEmail } from '../validation.ts'
 
@@ -33,6 +35,7 @@ function CreateBillPage() {
     payPal: '',
   }))
   const [formError, setFormError] = useState<string | null>(null)
+  const [isAskingAboutPayment, setIsAskingAboutPayment] = useState(false)
 
   const mutation = useMutation({
     mutationFn: createBill,
@@ -85,6 +88,14 @@ function CreateBillPage() {
       return
     }
     setFormError(null)
+    if (!hasPaymentInfo(details)) {
+      setIsAskingAboutPayment(true)
+      return
+    }
+    createWith(details)
+  }
+
+  function createWith(details: BillDetails) {
     mutation.mutate({
       ...details,
       captain_email: captainEmail.trim(),
@@ -197,6 +208,17 @@ function CreateBillPage() {
             {mutation.isPending ? 'Creating…' : 'Create bill'}
           </button>
         </form>
+
+        {isAskingAboutPayment && (
+          <NoPaymentInfoModal
+            onAdd={() => setIsAskingAboutPayment(false)}
+            onContinue={() => {
+              setIsAskingAboutPayment(false)
+              const details = buildDetails(values, restaurantName)
+              if (typeof details !== 'string') createWith(details)
+            }}
+          />
+        )}
 
         <ApiStatus />
       </div>

@@ -23,6 +23,7 @@ function makeDraft(overrides: Partial<Draft> = {}, billOverrides = {}): Draft {
       fees_cents: 0,
       total_cents: 3840,
       split_tip: true,
+      venmo_handle: '@brandon',
       items: [
         { id: 'i1', description: 'Burger', price_cents: 2000, position: 0, claims: [] },
         { id: 'i2', description: 'Salad', price_cents: 1000, position: 1, claims: [] },
@@ -209,7 +210,7 @@ test('editing asks you to save, and saving sends cents and updates the total', a
     tip_cents: 600,
     fees_cents: 0,
     split_tip: true,
-    venmo_handle: null,
+    venmo_handle: '@brandon',
     cashapp_tag: null,
     zelle_contact: null,
     paypal_handle: null,
@@ -293,9 +294,61 @@ test('fees from the scan can be edited and count towards the total', async () =>
   expect(screen.getByText('Bill total').nextSibling).toHaveTextContent('$38.40')
 })
 
+test('with no payment info, Open bill asks first and opens nothing yet', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubApi({ draft: makeDraft({}, { venmo_handle: null }) })
+  renderReviewPage()
+  await loaded()
+
+  await user.click(screen.getByRole('button', { name: 'Open bill' }))
+
+  expect(screen.getByRole('dialog', { name: 'How will people pay you back?' })).toBeInTheDocument()
+  expect(callsTo(fetchMock, 'PUT', '/draft')).toHaveLength(0)
+  expect(callsTo(fetchMock, 'POST', '/open')).toHaveLength(0)
+})
+
+test('adding payment info from the modal goes back to the form and jumps to Venmo', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubApi({ draft: makeDraft({}, { venmo_handle: null }) })
+  renderReviewPage()
+  await loaded()
+
+  await user.click(screen.getByRole('button', { name: 'Open bill' }))
+  await user.click(screen.getByRole('button', { name: 'Add payment info' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Venmo')).toHaveFocus()
+  expect(callsTo(fetchMock, 'POST', '/open')).toHaveLength(0)
+})
+
+test('choosing to collect another way opens the bill', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubApi({ draft: makeDraft({}, { venmo_handle: null }) })
+  renderReviewPage()
+  await loaded()
+
+  await user.click(screen.getByRole('button', { name: 'Open bill' }))
+  await user.click(screen.getByRole('button', { name: "I'll collect another way" }))
+
+  await screen.findByRole('heading', { name: 'Have everyone scan this' })
+  expect(callsTo(fetchMock, 'POST', '/open')).toHaveLength(1)
+})
+
+test('Save and check total never asks about payment', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubApi({ draft: makeDraft({}, { venmo_handle: null }) })
+  renderReviewPage()
+  await loaded()
+
+  await user.click(screen.getByRole('button', { name: 'Save and check total' }))
+
+  await vi.waitFor(() => expect(callsTo(fetchMock, 'PUT', '/draft')).toHaveLength(1))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
 test('payment info can be added during review, and counts as unsaved', async () => {
   const user = userEvent.setup()
-  const fetchMock = stubApi()
+  const fetchMock = stubApi({ draft: makeDraft({}, { venmo_handle: null }) })
   renderReviewPage()
   await loaded()
 

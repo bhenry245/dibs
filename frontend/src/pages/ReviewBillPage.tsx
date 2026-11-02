@@ -3,10 +3,11 @@ import { type SyntheticEvent, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 import { ApiError, type BillDetails, describeError, type Draft, getDraft, openBill, updateDraft } from '../api.ts'
 import BillFields from '../BillFields.tsx'
-import { type BillFormValues, buildDetails, newRow } from '../billForm.ts'
+import { type BillFormValues, buildDetails, hasPaymentInfo, newRow } from '../billForm.ts'
 import { loadIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { centsToInput, formatCents } from '../money.ts'
+import NoPaymentInfoModal from '../NoPaymentInfoModal.tsx'
 import Page from '../Page.tsx'
 import { INPUT_CLASS } from '../styles.ts'
 
@@ -86,6 +87,7 @@ function ReviewForm({
   }))
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(restaurantName, values))
   const [formError, setFormError] = useState<string | null>(null)
+  const [isAskingAboutPayment, setIsAskingAboutPayment] = useState(false)
 
   const currentSnapshot = snapshot(restaurantName, values)
 
@@ -132,7 +134,12 @@ function ReviewForm({
   function handleOpen(event: SyntheticEvent) {
     event.preventDefault()
     const details = detailsOrError()
-    if (details) open.mutate(details)
+    if (!details) return
+    if (hasPaymentInfo(details)) {
+      open.mutate(details)
+    } else {
+      setIsAskingAboutPayment(true)
+    }
   }
 
   const requestError = open.error ?? save.error
@@ -196,6 +203,17 @@ function ReviewForm({
           Opening shows the QR code so everyone can call dibs.
         </p>
       </div>
+
+      {isAskingAboutPayment && (
+        <NoPaymentInfoModal
+          onAdd={() => setIsAskingAboutPayment(false)}
+          onContinue={() => {
+            setIsAskingAboutPayment(false)
+            const details = detailsOrError()
+            if (details) open.mutate(details)
+          }}
+        />
+      )}
     </form>
   )
 }

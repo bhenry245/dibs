@@ -2,6 +2,9 @@ import { type BillFormValues, newRow, subtotalOf } from './billForm.ts'
 import { formatCents } from './money.ts'
 import { INPUT_CLASS } from './styles.ts'
 
+// The first payment field, so a prompt to add payment info can jump straight to it.
+export const PAYMENT_FIELD_ID = 'payment-venmo'
+
 // The items, tax, tip and fees fields, shared by typing a bill in and correcting a scanned one.
 function BillFields({
   values,
@@ -128,6 +131,7 @@ function BillFields({
         <label className="flex flex-col gap-1 text-sm text-gray-700">
           Venmo
           <input
+            id={PAYMENT_FIELD_ID}
             className={INPUT_CLASS}
             value={values.venmo}
             onChange={(event) => onChange({ venmo: event.target.value })}

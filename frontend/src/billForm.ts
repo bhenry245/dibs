@@ -41,6 +41,13 @@ export function subtotalOf(rows: ItemRow[]): number | null {
   return cents
 }
 
+// Whether guests will have any way to pay the Captain through an app.
+export function hasPaymentInfo(details: BillDetails): boolean {
+  return Boolean(
+    details.venmo_handle || details.cashapp_tag || details.zelle_contact || details.paypal_handle,
+  )
+}
+
 // Returns the bill's details, or an error message for the first thing that needs fixing.
 export function buildDetails(values: BillFormValues, restaurantName: string): BillDetails | string {
   const filledRows = values.rows.filter((row) => row.description.trim() || row.price.trim())

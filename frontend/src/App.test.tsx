@@ -61,6 +61,7 @@ async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Your email'), 'brandon@example.com')
   await user.type(screen.getByLabelText('Item 1'), 'Burger')
   await user.type(screen.getByLabelText('Price of item 1'), '20')
+  await user.type(screen.getByLabelText('Venmo'), '@brandon')
 }
 
 afterEach(() => {
@@ -107,7 +108,7 @@ test('creates a bill with amounts in cents and opens the share page', async () =
     tip_cents: 780,
     fees_cents: 0,
     split_tip: true,
-    venmo_handle: null,
+    venmo_handle: '@brandon',
     cashapp_tag: null,
     zelle_contact: null,
     paypal_handle: null,
@@ -206,12 +207,118 @@ test('tip is the last of the tax, fees and tip fields', () => {
   ])
 })
 
+test('with no payment info, it asks first and creates nothing yet', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  expect(screen.getByRole('dialog', { name: 'How will people pay you back?' })).toBeInTheDocument()
+  expect(sentBill(fetchMock)).toBeUndefined()
+})
+
+test('spaces in a payment field do not count as payment info', async () => {
+  const user = userEvent.setup()
+  stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.type(screen.getByLabelText('Cash App'), '   ')
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
+
+test.each([
+  ['Venmo'],
+  ['Cash App'],
+  ['Zelle (phone or email)'],
+  ['PayPal (your PayPal.Me name)'],
+])('any one payment app is enough: %s', async (label) => {
+  const user = userEvent.setup()
+  stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.type(screen.getByLabelText(label), 'someone')
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  await landedOnSharePage()
+  expect(screen.queryByRole('dialog', { name: /pay you back/ })).not.toBeInTheDocument()
+})
+
+test('adding payment info closes the modal, jumps to Venmo and creates nothing', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+  await user.click(screen.getByRole('button', { name: 'Add payment info' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Venmo')).toHaveFocus()
+  expect(screen.getByLabelText('Item 1')).toHaveValue('Burger')
+  expect(sentBill(fetchMock)).toBeUndefined()
+})
+
+test('Escape takes the safer choice, back to adding payment info', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+  expect(screen.getByRole('dialog')).toHaveFocus()
+  await user.keyboard('{Escape}')
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(sentBill(fetchMock)).toBeUndefined()
+})
+
+test('choosing to collect another way creates the bill', async () => {
+  const user = userEvent.setup()
+  const fetchMock = stubFetch()
+  renderAt('/')
+
+  await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+  await user.click(screen.getByRole('button', { name: "I'll collect another way" }))
+
+  await landedOnSharePage()
+  expect(sentBill(fetchMock).venmo_handle).toBeNull()
+})
+
+test('a bad price is shown first, before asking about payment', async () => {
+  const user = userEvent.setup()
+  stubFetch()
+  renderAt('/')
+
+  await user.type(screen.getByLabelText('Your name'), 'Brandon')
+  await user.type(screen.getByLabelText('Your email'), 'brandon@example.com')
+  await user.type(screen.getByLabelText('Item 1'), 'Soup')
+  await user.type(screen.getByLabelText('Price of item 1'), 'abc')
+  await user.click(screen.getByRole('button', { name: 'Create bill' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid price')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
 test('sends payment info with the bill', async () => {
   const user = userEvent.setup()
   const fetchMock = stubFetch()
   renderAt('/')
 
   await fillRequiredFields(user)
+  await user.clear(screen.getByLabelText('Venmo'))
   await user.type(screen.getByLabelText('Venmo'), ' @brandon ')
   await user.type(screen.getByLabelText('Cash App'), '$brandon')
   await user.type(screen.getByLabelText('Zelle (phone or email)'), '555-0100')
