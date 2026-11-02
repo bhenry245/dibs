@@ -136,7 +136,7 @@ function YourTotal({
       {unclaimedCount > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {unclaimedCount === 1 ? '1 item has' : `${unclaimedCount} items have`} no dibs yet.
-          {isCaptain && ' Anything left unclaimed counts as yours.'}
+          {isCaptain && " You'll sort these out when you lock the bill."}
         </p>
       )}
     </section>

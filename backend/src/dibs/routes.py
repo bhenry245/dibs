@@ -35,6 +35,10 @@ from dibs.schemas import (
 
 router = APIRouter()
 
+# Stands in for whoever ends up with the unclaimed items, so they take their part of the tax and
+# fees and everyone else's amounts are the same as they'll be after the lock.
+UNCLAIMED = uuid.UUID(int=0)
+
 Session = Annotated[AsyncSession, Depends(get_session)]
 # auto_error=False lets us answer a missing token with our own 401.
 Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))]
@@ -355,8 +359,8 @@ async def save_my_claims(
     return person_total(totals, crew_member)
 
 
-# What everyone would owe right now. Unclaimed items count as the Captain's, which is what
-# happens at lock time (design §8), and they're listed so the Captain can be warned.
+# What everyone would owe right now, from what they've claimed. Unclaimed items are reported
+# separately, and get settled when the bill is locked (design §8).
 @router.get("/bills/{share_code}/totals")
 async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
     return await calculate_totals(session, bill)
@@ -369,13 +373,11 @@ async def calculate_totals(
     picks: tuple[uuid.UUID, set[uuid.UUID]] | None = None,
 ) -> BillTotals:
     crew = await load_crew(session, bill.id)
-    captain = crew[0]
     items = await load_items(session, bill.id)
     claims_by_item = await load_claims_by_item(session, bill.id)
 
     money_items = []
     unclaimed_item_ids = []
-    unclaimed_cents = 0
     for item in items:
         dibs = {claim.crew_member_id: claim.shares for claim in claims_by_item[item.id]}
         if picks:
@@ -386,12 +388,11 @@ async def calculate_totals(
                 dibs.pop(person_id, None)
         if not dibs:
             unclaimed_item_ids.append(item.id)
-            unclaimed_cents += item.price_cents
-            dibs = {captain.id: 1}
+            dibs = {UNCLAIMED: 1}
         money_items.append(Item(item.price_cents, dibs))
 
     totals = split_bill(
-        [member.id for member in crew],
+        [*(member.id for member in crew), UNCLAIMED],
         money_items,
         bill.tax_cents,
         bill.tip_cents,
@@ -403,9 +404,6 @@ async def calculate_totals(
             PersonTotalOut(
                 crew_member_id=member.id,
                 name=member.name,
-                claimed_cents=totals[member.id].subtotal_cents
-                - (unclaimed_cents if member.is_captain else 0),
-                unclaimed_cents=unclaimed_cents if member.is_captain else 0,
                 subtotal_cents=totals[member.id].subtotal_cents,
                 tax_cents=totals[member.id].tax_cents,
                 tip_cents=totals[member.id].tip_cents,
@@ -415,4 +413,5 @@ async def calculate_totals(
             for member in crew
         ],
         unclaimed_item_ids=unclaimed_item_ids,
+        unclaimed_cents=totals[UNCLAIMED].total_cents,
     )

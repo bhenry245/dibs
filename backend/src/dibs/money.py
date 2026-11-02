@@ -90,7 +90,7 @@ class PersonTotal:
 # Each item's price is split between its claimers by shares. Tax and fees are then always split
 # in proportion to each person's item subtotal, and the tip is too unless the Captain covers it.
 # The order of people is the tie-break order, so the Captain goes first. Every item must
-# already be claimed: unclaimed items are assigned to the Captain before this runs.
+# have a claimer, so callers decide what happens to unclaimed items before this runs.
 
 # Args:
 #     people: Everyone on the bill, Captain first.

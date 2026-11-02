@@ -28,22 +28,14 @@ function personTotal(id: string, claims: Record<string, Claim[]>) {
   const claimed = ITEMS.filter((item) =>
     claims[item.id].some((claim) => claim.crew_member_id === id),
   ).reduce((sum, item) => sum + item.price_cents, 0)
-  const unclaimed = person.is_captain
-    ? ITEMS.filter((item) => claims[item.id].length === 0).reduce(
-        (sum, item) => sum + item.price_cents,
-        0,
-      )
-    : 0
   return {
     crew_member_id: id,
     name: person.name,
-    claimed_cents: claimed,
-    unclaimed_cents: unclaimed,
-    subtotal_cents: claimed + unclaimed,
+    subtotal_cents: claimed,
     tax_cents: 7,
     tip_cents: 11,
     fees_cents: 0,
-    total_cents: claimed + unclaimed + 18,
+    total_cents: claimed + 18,
   }
 }
 
@@ -100,6 +92,7 @@ function fakeApi({
         unclaimed_item_ids: ITEMS.filter((item) => state.claims[item.id].length === 0).map(
           (item) => item.id,
         ),
+        unclaimed_cents: 0,
       })
     }
     return jsonResponse(200, {
@@ -300,13 +293,12 @@ test('deselecting goes back to your saved total, and the note goes away', async 
   expect(screen.queryByText(/Not saved yet/)).not.toBeInTheDocument()
 })
 
-test('the Captain total moves from unclaimed to their items as they select', async () => {
+test('the Captain starts at zero and goes up as they select, like the crew', async () => {
   const user = userEvent.setup()
   fakeApi()
   renderAs('cap')
-  expect((await screen.findByText('Unclaimed, counts as yours')).nextSibling).toHaveTextContent(
-    '$41.00',
-  )
+  expect((await screen.findByText('Your items')).nextSibling).toHaveTextContent('$0.00')
+  expect(screen.getByRole('heading', { name: 'Your total' })).toBeInTheDocument()
   expect(screen.getByText(/3 items have no dibs yet/)).toBeInTheDocument()
 
   await user.click(await item(/Burger/))
@@ -314,7 +306,8 @@ test('the Captain total moves from unclaimed to their items as they select', asy
   await vi.waitFor(() =>
     expect(screen.getByText('Your items').nextSibling).toHaveTextContent('$20.00'),
   )
-  expect(screen.getByText('Unclaimed, counts as yours').nextSibling).toHaveTextContent('$21.00')
+  expect(screen.getByText('$20.18')).toBeInTheDocument()
+  expect(screen.queryByText(/counts as yours/)).not.toBeInTheDocument()
   expect(screen.getByText(/2 items have no dibs yet/)).toBeInTheDocument()
 })
 
@@ -570,16 +563,16 @@ test('dropping an item says so, and you can drop everything', async () => {
 
 // --- The Captain's total ---
 
-test('the Captain sees unclaimed items apart from what they claimed', async () => {
+test('the Captain only sees what they claimed, and is told about the rest', async () => {
   const { state } = fakeApi()
   state.claims.salad = [{ crew_member_id: 'cap', shares: 1 }]
   renderAs('cap')
 
   expect((await screen.findByText('Your items')).nextSibling).toHaveTextContent('$10.00')
-  expect(screen.getByText('Unclaimed, counts as yours').nextSibling).toHaveTextContent('$31.00')
+  expect(screen.getByText('$10.18')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Your total' })).toBeInTheDocument()
   expect(screen.getByText(/2 items have no dibs yet/)).toHaveTextContent(
-    'Anything left unclaimed counts as yours.',
+    "You'll sort these out when you lock the bill.",
   )
 })
 
@@ -590,8 +583,7 @@ test('crew see how many items are unclaimed, without the Captain warning', async
 
   expect(await screen.findByRole('heading', { name: 'You owe' })).toBeInTheDocument()
   const notice = await screen.findByText(/2 items have no dibs yet/)
-  expect(notice).not.toHaveTextContent('counts as yours')
-  expect(screen.queryByText('Unclaimed, counts as yours')).not.toBeInTheDocument()
+  expect(notice).not.toHaveTextContent('lock the bill')
 })
 
 test('shows your part of the fees when there are some', async () => {

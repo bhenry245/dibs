@@ -172,9 +172,6 @@ class ClaimResponse(BaseModel):
 class PersonTotalOut(BaseModel):
     crew_member_id: uuid.UUID
     name: str
-    # claimed_cents + unclaimed_cents = subtotal_cents. Only the Captain has unclaimed items.
-    claimed_cents: int
-    unclaimed_cents: int
     subtotal_cents: int
     tax_cents: int
     tip_cents: int
@@ -184,5 +181,7 @@ class PersonTotalOut(BaseModel):
 
 class BillTotals(BaseModel):
     people: list[PersonTotalOut]
-    # These are counted as the Captain's in people, so the Captain can be warned about them.
+    # Items nobody has claimed aren't on anyone's total until the bill is locked. This is what they
+    # come to, with their part of the tax and fees, so people plus this adds up to the bill.
     unclaimed_item_ids: list[uuid.UUID]
+    unclaimed_cents: int

@@ -71,6 +71,12 @@ function WhoOwesWhat({ bill, totals }: { bill: Bill; totals: BillTotals }) {
             <span>{formatCents(person.total_cents)}</span>
           </li>
         ))}
+        {totals.unclaimed_cents > 0 && (
+          <li className="flex justify-between gap-4 text-gray-600">
+            <span>Unclaimed</span>
+            <span>{formatCents(totals.unclaimed_cents)}</span>
+          </li>
+        )}
       </ul>
       <p className="flex justify-between border-t border-gray-300 pt-3 font-semibold text-gray-900">
         <span>Bill total</span>
@@ -78,7 +84,7 @@ function WhoOwesWhat({ bill, totals }: { bill: Bill; totals: BillTotals }) {
       </p>
       {unclaimedItems.length > 0 && (
         <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <p className="font-semibold">No dibs yet, so these count as yours:</p>
+          <p className="font-semibold">No dibs yet. You&apos;ll sort these out when you lock the bill:</p>
           <ul className="list-inside list-disc">
             {unclaimedItems.map((item) => (
               <li key={item.id} className="break-words">

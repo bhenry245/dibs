@@ -41,6 +41,7 @@ function person(id: string, name: string, totalCents: number) {
 const TOTALS = {
   people: [person('cap', 'Brandon', 3136), person('ana', 'Ana', 1856)],
   unclaimed_item_ids: [],
+  unclaimed_cents: 0,
 }
 
 function jsonResponse(status: number, body: unknown) {
@@ -150,12 +151,16 @@ test('says when nobody else has joined', async () => {
   expect(await screen.findByText('Nobody else has joined yet.')).toBeInTheDocument()
 })
 
-test('warns the Captain which unclaimed items count as theirs', async () => {
-  stubApi(undefined, () => jsonResponse(200, { ...TOTALS, unclaimed_item_ids: ['nachos'] }))
+test('lists unclaimed items and what they come to, apart from the Captain', async () => {
+  stubApi(undefined, () =>
+    jsonResponse(200, { ...TOTALS, unclaimed_item_ids: ['nachos'], unclaimed_cents: 1152 }),
+  )
   renderSharePage()
 
   const warning = await screen.findByRole('status')
-  expect(warning).toHaveTextContent('No dibs yet, so these count as yours:')
+  expect(warning).toHaveTextContent('when you lock the bill')
+  expect(warning).not.toHaveTextContent('count as yours')
+  expect(screen.getByText('Unclaimed').nextSibling).toHaveTextContent('$11.52')
   expect(warning).toHaveTextContent('Nachos ($9.00)')
   expect(warning).not.toHaveTextContent('Burger')
 })
@@ -167,6 +172,7 @@ test('shows no warning when everything is claimed', async () => {
   await screen.findByText('Brandon (Captain)')
 
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.queryByText('Unclaimed')).not.toBeInTheDocument()
 })
 
 test('never uses the word share in what the Captain reads', async () => {
@@ -208,7 +214,7 @@ test('Refresh picks up new people and amounts', async () => {
   renderSharePage()
   await screen.findByText('Nobody else has joined yet.')
 
-  totals = TOTALS as typeof totals
+  totals = TOTALS as unknown as typeof totals
   await user.click(screen.getByRole('button', { name: 'Refresh' }))
 
   expect(await screen.findByText('$18.56')).toBeInTheDocument()

@@ -15,14 +15,8 @@ function TotalSummary({ person, isCaptain }: { person: PersonTotal; isCaptain: b
       <dl className="flex flex-col gap-1 text-sm text-gray-700">
         <div className="flex justify-between">
           <dt>Your items</dt>
-          <dd>{formatCents(person.claimed_cents)}</dd>
+          <dd>{formatCents(person.subtotal_cents)}</dd>
         </div>
-        {person.unclaimed_cents > 0 && (
-          <div className="flex justify-between">
-            <dt>Unclaimed, counts as yours</dt>
-            <dd>{formatCents(person.unclaimed_cents)}</dd>
-          </div>
-        )}
         <div className="flex justify-between">
           <dt>Your tax</dt>
           <dd>{formatCents(person.tax_cents)}</dd>

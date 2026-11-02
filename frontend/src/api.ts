@@ -85,8 +85,6 @@ export type BillTotals = {
   people: {
     crew_member_id: string
     name: string
-    claimed_cents: number
-    unclaimed_cents: number
     subtotal_cents: number
     tax_cents: number
     tip_cents: number
@@ -94,6 +92,7 @@ export type BillTotals = {
     total_cents: number
   }[]
   unclaimed_item_ids: string[]
+  unclaimed_cents: number
 }
 
 export type PersonTotal = BillTotals['people'][number]

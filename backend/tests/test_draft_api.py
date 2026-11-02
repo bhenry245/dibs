@@ -1,7 +1,7 @@
 import base64
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import anthropic
 import boto3
@@ -156,8 +156,13 @@ async def manual_bill(client: AsyncClient) -> dict:
     return response.json()
 
 
+# Only the last day, because that's all the limit counts, and older scans exist on a dev database.
 async def scan_count(session: AsyncSession) -> int:
-    return await session.scalar(select(func.count()).select_from(ReceiptScan))
+    return await session.scalar(
+        select(func.count())
+        .select_from(ReceiptScan)
+        .where(ReceiptScan.created_at > func.now() - timedelta(days=1))
+    )
 
 
 # --- POST /bills/from-receipt ---
@@ -474,7 +479,11 @@ async def test_every_upload_gets_its_own_key(client: AsyncClient):
 async def test_upload_links_are_limited_per_day(
     client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
-    recent = await session.scalar(select(func.count()).select_from(ReceiptUpload))
+    recent = await session.scalar(
+        select(func.count())
+        .select_from(ReceiptUpload)
+        .where(ReceiptUpload.created_at > func.now() - timedelta(days=1))
+    )
     monkeypatch.setattr(settings, "receipt_upload_daily_limit", recent + 1)
 
     assert (await client.post("/receipts/upload-url")).status_code == 201

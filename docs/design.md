@@ -148,7 +148,7 @@ Proportional splits produce fractions of a cent. To make shares add up to the to
 **Example:** $10.00 split 3 ways gives $3.33 / $3.33 / $3.34. The total is always exactly right.
 
 ### Unclaimed items
-At lock time, any unclaimed item is assigned to the Captain unless the Captain assigns it to someone else. The lock screen lists unclaimed items **prominently** and requires explicit confirmation.
+Until the lock, unclaimed items aren't on anyone's total, including the Captain's, so everyone's total starts at zero and only reflects what they claimed. At lock time, any unclaimed item is assigned to the Captain unless the Captain assigns it to someone else. The lock screen lists unclaimed items **prominently** and requires explicit confirmation.
 
 ## 9. Architecture
 

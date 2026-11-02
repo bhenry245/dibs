@@ -404,7 +404,7 @@ async def test_my_claims_saves_every_item_and_returns_my_total(client: AsyncClie
     response = await my_claims(client, code, joined["token"], [burger, salad])
 
     assert response.status_code == 200
-    assert response.json()["claimed_cents"] == 3000
+    assert response.json()["subtotal_cents"] == 3000
     assert response.json()["total_cents"] == 3000 + 240 + 600
     bill = (await client.get(f"/bills/{code}")).json()
     ana = joined["crew_member_id"]
@@ -532,7 +532,7 @@ async def test_preview_shows_the_total_without_saving_anything(client: AsyncClie
     )
 
     assert response.status_code == 200
-    assert response.json()["claimed_cents"] == 1000 + 450
+    assert response.json()["subtotal_cents"] == 1000 + 450
     assert response.json()["tax_cents"] == 116
     assert response.json()["total_cents"] == 1450 + 116 + 290
     assert claimers((await client.get(f"/bills/{code}")).json()) == [
@@ -552,7 +552,7 @@ async def test_preview_can_drop_an_item_i_already_claimed(client: AsyncClient):
         headers=auth(joined["token"]),
     )
 
-    assert response.json()["claimed_cents"] == 1000
+    assert response.json()["subtotal_cents"] == 1000
 
 
 async def test_preview_matches_what_saving_returns(client: AsyncClient):
@@ -567,7 +567,7 @@ async def test_preview_matches_what_saving_returns(client: AsyncClient):
     assert preview.json() == saved.json()
 
 
-async def test_captain_preview_counts_what_stays_unclaimed(client: AsyncClient):
+async def test_captain_preview_only_counts_what_they_pick(client: AsyncClient):
     created, _, code, (burger, salad, nachos) = await bill_with_ana(client)
 
     response = await client.post(
@@ -576,9 +576,8 @@ async def test_captain_preview_counts_what_stays_unclaimed(client: AsyncClient):
         headers=auth(created["token"]),
     )
 
-    assert response.json()["claimed_cents"] == 1000
-    assert response.json()["unclaimed_cents"] == 2900
-    assert response.json()["total_cents"] == 4992
+    assert response.json()["subtotal_cents"] == 1000
+    assert response.json()["total_cents"] == 1000 + 80 + 200
 
 
 # --- Payment info ---
@@ -655,7 +654,7 @@ async def test_totals_use_uneven_shares(client: AsyncClient):
     assert by_name(totals) == {"Cap": (1200, 0, 0, 1200), "Ana": (600, 0, 0, 600)}
 
 
-async def test_unclaimed_items_count_as_the_captains_and_are_listed(client: AsyncClient):
+async def test_unclaimed_items_are_on_nobodys_total_and_are_listed(client: AsyncClient):
     created = await create_bill(client)
     code = created["bill"]["share_code"]
     joined = await join(client, code)
@@ -664,12 +663,13 @@ async def test_unclaimed_items_count_as_the_captains_and_are_listed(client: Asyn
 
     totals = (await client.get(f"/bills/{code}/totals")).json()
 
-    assert by_name(totals)["Cap"][0] == 2900
+    assert by_name(totals)["Cap"] == (0, 0, 0, 0)
     assert by_name(totals)["Ana"][0] == 1000
     assert totals["unclaimed_item_ids"] == [burger, nachos]
+    assert totals["unclaimed_cents"] == 2900 + 232 + 580
 
 
-async def test_totals_separate_what_the_captain_claimed_from_what_is_unclaimed(client: AsyncClient):
+async def test_captain_starts_at_zero_and_only_pays_for_what_they_claim(client: AsyncClient):
     created = await create_bill(client)
     code = created["bill"]["share_code"]
     joined = await join(client, code)
@@ -679,10 +679,46 @@ async def test_totals_separate_what_the_captain_claimed_from_what_is_unclaimed(c
 
     totals = (await client.get(f"/bills/{code}/totals")).json()
 
-    people = {person["name"]: person for person in totals["people"]}
-    assert (people["Cap"]["claimed_cents"], people["Cap"]["unclaimed_cents"]) == (1000, 900)
-    assert people["Cap"]["subtotal_cents"] == 1900
-    assert (people["Ana"]["claimed_cents"], people["Ana"]["unclaimed_cents"]) == (2000, 0)
+    assert by_name(totals)["Cap"][0] == 1000
+    assert by_name(totals)["Ana"][0] == 2000
+    assert totals["unclaimed_cents"] == 900 + 72 + 180
+
+
+async def test_a_new_bill_has_everyone_at_zero_and_everything_unclaimed(client: AsyncClient):
+    created = await create_bill(client)
+    code = created["bill"]["share_code"]
+
+    totals = (await client.get(f"/bills/{code}/totals")).json()
+
+    assert by_name(totals) == {"Cap": (0, 0, 0, 0)}
+    assert totals["unclaimed_cents"] == created["bill"]["total_cents"]
+
+
+async def test_unclaimed_items_do_not_change_what_a_crew_member_owes(client: AsyncClient):
+    created = await create_bill(client)
+    code = created["bill"]["share_code"]
+    joined = await join(client, code)
+    salad = created["bill"]["items"][1]["id"]
+    await claim(client, salad, joined["token"])
+    before = by_name((await client.get(f"/bills/{code}/totals")).json())["Ana"]
+
+    burger, _, nachos = (item["id"] for item in created["bill"]["items"])
+    await claim(client, burger, created["token"])
+    await claim(client, nachos, created["token"])
+
+    assert by_name((await client.get(f"/bills/{code}/totals")).json())["Ana"] == before
+
+
+async def test_captain_who_covers_the_tip_still_owes_it_with_nothing_claimed(
+    client: AsyncClient,
+):
+    created = await create_bill(client, split_tip=False)
+    code = created["bill"]["share_code"]
+
+    totals = (await client.get(f"/bills/{code}/totals")).json()
+
+    assert by_name(totals)["Cap"] == (0, 0, 780, 780)
+    assert totals["unclaimed_cents"] == 3900 + 312
 
 
 async def test_captain_with_everything_claimed_has_nothing_unclaimed(client: AsyncClient):
@@ -693,8 +729,8 @@ async def test_captain_with_everything_claimed_has_nothing_unclaimed(client: Asy
 
     totals = (await client.get(f"/bills/{code}/totals")).json()
 
-    assert totals["people"][0]["claimed_cents"] == 3900
-    assert totals["people"][0]["unclaimed_cents"] == 0
+    assert totals["people"][0]["subtotal_cents"] == 3900
+    assert totals["unclaimed_cents"] == 0
 
 
 async def test_captain_can_cover_the_tip(client: AsyncClient):
@@ -741,8 +777,9 @@ async def test_fees_are_in_the_bill_total_and_split_in_proportion(client: AsyncC
     assert created["bill"]["fees_cents"] == 390
     assert created["bill"]["total_cents"] == 4290
     fees = {person["name"]: person["fees_cents"] for person in totals["people"]}
-    assert fees == {"Cap": 290, "Ana": 100}
-    assert sum(person["total_cents"] for person in totals["people"]) == 4290
+    assert fees == {"Cap": 0, "Ana": 100}
+    assert sum(person["total_cents"] for person in totals["people"]) == 1100
+    assert totals["unclaimed_cents"] == 2900 + 290
 
 
 async def test_fees_need_an_item_with_a_price(client: AsyncClient):
@@ -782,7 +819,7 @@ async def test_totals_always_add_up_to_the_bill_exactly(client: AsyncClient):
     totals = (await client.get(f"/bills/{code}/totals")).json()
 
     assert (
-        sum(person["total_cents"] for person in totals["people"])
+        sum(person["total_cents"] for person in totals["people"]) + totals["unclaimed_cents"]
         == 1000 + 1333 + 777 + 87 + 133 + 311
     )
 
