@@ -224,6 +224,32 @@ async def test_mismatches_are_kept_as_warnings_and_not_fixed(
     ]
 
 
+async def test_a_typed_restaurant_name_wins_over_the_receipt(
+    client: AsyncClient, claude: FakeClaude
+):
+    created = await scan(client, restaurant_name="  Mom's Place ")
+
+    assert created["draft"]["bill"]["restaurant_name"] == "Mom's Place"
+
+
+async def test_with_no_typed_name_the_receipts_name_is_used(
+    client: AsyncClient, claude: FakeClaude
+):
+    created = await scan(client, restaurant_name=None)
+
+    assert created["draft"]["bill"]["restaurant_name"] == "Luigi's"
+
+
+@pytest.mark.parametrize("name", ["   ", "x" * 201])
+async def test_a_bad_typed_name_is_rejected_before_calling_claude(
+    client: AsyncClient, claude: FakeClaude, name: str
+):
+    response = await send_scan(client, form=FORM | {"restaurant_name": name})
+
+    assert response.status_code == 422
+    assert claude.requests == []
+
+
 async def test_amounts_not_printed_start_at_zero(client: AsyncClient, claude: FakeClaude):
     claude.reading = READING | {
         "restaurant_name": None,

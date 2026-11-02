@@ -49,7 +49,12 @@ function CreateBillPage() {
       const shrunk = await shrinkImage(photo)
       const upload = await createReceiptUpload()
       await uploadPhoto(upload, shrunk)
-      return createBillFromReceipt(upload.upload_id, captainEmail.trim(), captainName.trim())
+      return createBillFromReceipt(
+        upload.upload_id,
+        captainEmail.trim(),
+        captainName.trim(),
+        restaurantName.trim() || null,
+      )
     },
     onSuccess: (created) => {
       saveIdentity(created.draft.bill.share_code, {
@@ -132,6 +137,15 @@ function CreateBillPage() {
                 required
               />
             </label>
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Restaurant (optional)
+              <input
+                className={INPUT_CLASS}
+                value={restaurantName}
+                onChange={(event) => setRestaurantName(event.target.value)}
+                maxLength={200}
+              />
+            </label>
           </section>
 
           <section className="flex flex-col gap-3">
@@ -162,18 +176,6 @@ function CreateBillPage() {
           </section>
 
           <p className="text-center text-sm font-medium text-gray-600">or type it in</p>
-
-          <section className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Restaurant (optional)
-              <input
-                className={INPUT_CLASS}
-                value={restaurantName}
-                onChange={(event) => setRestaurantName(event.target.value)}
-                maxLength={200}
-              />
-            </label>
-          </section>
 
           <BillFields
             values={values}

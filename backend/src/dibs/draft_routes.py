@@ -237,6 +237,7 @@ async def create_bill_from_receipt(
     try:
         receipt = await parse_receipt(image, media_type, client)
         details = receipt_to_details(receipt)
+        details.restaurant_name = body.restaurant_name or details.restaurant_name
     except ReceiptUnreadableError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
     except ReceiptServiceError as error:

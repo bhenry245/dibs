@@ -224,6 +224,19 @@ test('sends payment info with the bill', async () => {
   })
 })
 
+test('the restaurant field comes right after your email', () => {
+  stubFetch()
+  renderAt('/')
+
+  const boxes = screen.getAllByRole('textbox')
+
+  expect(boxes.slice(0, 3)).toEqual([
+    screen.getByLabelText('Your name'),
+    screen.getByLabelText('Your email'),
+    screen.getByLabelText('Restaurant (optional)'),
+  ])
+})
+
 test('removing an item keeps the text in the other rows', async () => {
   const user = userEvent.setup()
   const fetchMock = stubFetch()

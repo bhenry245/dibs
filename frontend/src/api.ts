@@ -176,6 +176,7 @@ export function createBillFromReceipt(
   uploadId: string,
   captainEmail: string,
   captainName: string,
+  restaurantName: string | null,
 ): Promise<DraftCreated> {
   return request('/bills/from-receipt', {
     method: 'POST',
@@ -184,6 +185,7 @@ export function createBillFromReceipt(
       upload_id: uploadId,
       captain_email: captainEmail,
       captain_name: captainName,
+      restaurant_name: restaurantName,
     }),
   })
 }

@@ -134,7 +134,21 @@ test('uploads the shrunk photo to S3, then scans it, then opens the review scree
     upload_id: 'upload-1',
     captain_email: 'brandon@example.com',
     captain_name: 'Brandon',
+    restaurant_name: null,
   })
+})
+
+test('sends a typed restaurant name with the scan', async () => {
+  const user = userEvent.setup({ applyAccept: false })
+  const fetchMock = stubApi()
+  renderCreatePage()
+
+  await fillInAboutYou(user)
+  await user.type(screen.getByLabelText('Restaurant (optional)'), " Mom's Place ")
+  await user.upload(fileInput(), PHOTO)
+
+  await screen.findByRole('heading', { name: 'Check your receipt' })
+  expect(JSON.parse(scanCalls(fetchMock)[0][1].body).restaurant_name).toBe("Mom's Place")
 })
 
 test('a failed upload is explained, and the photo is never scanned', async () => {

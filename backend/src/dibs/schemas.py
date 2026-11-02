@@ -16,6 +16,9 @@ MAX_SHARES = 100
 Cents = Annotated[int, Field(ge=0, le=MAX_CENTS, strict=True)]
 Shares = Annotated[int, Field(ge=1, le=MAX_SHARES, strict=True)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+RestaurantName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
 PaymentHandle = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)
@@ -36,10 +39,7 @@ class LineItemCreate(BaseModel):
 
 # What a bill says, whether it was typed in or corrected after a scan.
 class BillDetails(BaseModel):
-    restaurant_name: (
-        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-        | None
-    ) = None
+    restaurant_name: RestaurantName | None = None
     tax_cents: Cents = 0
     tip_cents: Cents = 0
     fees_cents: Cents = 0
@@ -156,6 +156,8 @@ class ReceiptScanRequest(BaseModel):
     upload_id: uuid.UUID
     captain_email: Email
     captain_name: Name
+    # What the Captain typed, which wins over what's read from the receipt.
+    restaurant_name: RestaurantName | None = None
 
 
 class JoinResponse(BaseModel):
