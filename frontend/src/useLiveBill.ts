@@ -23,6 +23,8 @@ export function useLiveBill(shareCode: string): number {
       queryClient.invalidateQueries({ queryKey: ['bill', shareCode] })
       queryClient.invalidateQueries({ queryKey: ['totals', shareCode] })
       queryClient.invalidateQueries({ queryKey: ['preview', shareCode] })
+      queryClient.invalidateQueries({ queryKey: ['lock-preview', shareCode] })
+      queryClient.invalidateQueries({ queryKey: ['settlements', shareCode] })
     }
 
     function connect() {

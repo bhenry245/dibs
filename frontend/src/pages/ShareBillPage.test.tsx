@@ -52,9 +52,10 @@ function stubApi(
   billResponse: () => unknown = () => jsonResponse(200, BILL),
   totalsResponse: () => unknown = () => jsonResponse(200, TOTALS),
 ) {
-  const fetchMock = vi.fn(async (url: string) =>
-    url.endsWith('/totals') ? totalsResponse() : billResponse(),
-  )
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith('/settlements')) return jsonResponse(200, [])
+    return url.endsWith('/totals') ? totalsResponse() : billResponse()
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -204,7 +205,7 @@ test('a locked bill hides the QR code', async () => {
 
   expect(await screen.findByText('This bill is locked, so nobody new can join.')).toBeInTheDocument()
   expect(screen.queryByTitle('QR code to join this bill')).not.toBeInTheDocument()
-  expect(await screen.findByText('Brandon (Captain)')).toBeInTheDocument()
+  expect(await screen.findByText('Nobody owes anything on this bill.')).toBeInTheDocument()
 })
 
 test('Refresh picks up new people and amounts', async () => {

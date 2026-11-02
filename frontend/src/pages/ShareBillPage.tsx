@@ -9,9 +9,11 @@ import {
   getBill,
   getTotals,
 } from '../api.ts'
+import { loadIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
+import SettleUp from '../SettleUp.tsx'
 import { useLiveBill } from '../useLiveBill.ts'
 
 const BUTTON_CLASS =
@@ -103,6 +105,7 @@ function ShareBillPage() {
   const shareCode = useParams().shareCode!
   const queryClient = useQueryClient()
   const pollMs = useLiveBill(shareCode)
+  const [identity] = useState(() => loadIdentity(shareCode))
 
   const billQuery = useQuery({
     queryKey: ['bill', shareCode],
@@ -143,6 +146,10 @@ function ShareBillPage() {
   }
 
   const bill = billQuery.data!
+  const isOpen = bill.status === 'OPEN'
+  const isCaptain = bill.crew.some(
+    (member) => member.is_captain && member.id === identity?.crewMemberId,
+  )
 
   // Built from the address this page was opened on, so it points at whichever server is running.
   const link = `${window.location.origin}/b/${encodeURIComponent(shareCode)}`
@@ -150,6 +157,7 @@ function ShareBillPage() {
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['bill', shareCode] })
     queryClient.invalidateQueries({ queryKey: ['totals', shareCode] })
+    queryClient.invalidateQueries({ queryKey: ['settlements', shareCode] })
   }
 
   return (
@@ -161,7 +169,7 @@ function ShareBillPage() {
         </h1>
       </header>
 
-      {bill.status === 'OPEN' ? (
+      {isOpen ? (
         <ShareLink link={link} />
       ) : (
         <p className="text-gray-700">This bill is locked, so nobody new can join.</p>
@@ -174,11 +182,21 @@ function ShareBillPage() {
         Call dibs on your items
       </Link>
 
-      {totalsQuery.isPending && <p className="text-gray-600">Working out the totals…</p>}
-      {totalsQuery.isError && !totalsQuery.data && (
-        <LoadError error={totalsQuery.error} onRetry={() => totalsQuery.refetch()} />
+      {isOpen ? (
+        <>
+          {totalsQuery.isPending && <p className="text-gray-600">Working out the totals…</p>}
+          {totalsQuery.isError && !totalsQuery.data && (
+            <LoadError error={totalsQuery.error} onRetry={() => totalsQuery.refetch()} />
+          )}
+          {totalsQuery.data && <WhoOwesWhat bill={bill} totals={totalsQuery.data} />}
+        </>
+      ) : (
+        <SettleUp
+          bill={bill}
+          captainToken={isCaptain && identity ? identity.token : null}
+          pollMs={pollMs}
+        />
       )}
-      {totalsQuery.data && <WhoOwesWhat bill={bill} totals={totalsQuery.data} />}
 
       <button type="button" className={`${BUTTON_CLASS} self-start`} onClick={refresh}>
         Refresh

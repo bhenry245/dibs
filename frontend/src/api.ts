@@ -97,6 +97,11 @@ export type BillTotals = {
 
 export type PersonTotal = BillTotals['people'][number]
 
+export type Settlement = PersonTotal & {
+  id: string
+  status: 'OWED' | 'MARKED_PAID' | 'CONFIRMED'
+}
+
 // The API answered with an error. Its message is safe to show to the user.
 export class ApiError extends Error {
   status: number
@@ -213,6 +218,70 @@ export function joinBill(shareCode: string, body: JoinRequest): Promise<JoinResp
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+export function previewLock(
+  shareCode: string,
+  token: string,
+  assignments: Record<string, string>,
+): Promise<BillTotals> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/lock/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ assignments }),
+  })
+}
+
+export function lockBill(
+  shareCode: string,
+  token: string,
+  assignments: Record<string, string>,
+): Promise<Bill> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ assignments }),
+  })
+}
+
+export function reopenBill(shareCode: string, token: string): Promise<Bill> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/reopen`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function getSettlements(shareCode: string): Promise<Settlement[]> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/settlements`)
+}
+
+export function markPaid(shareCode: string, token: string): Promise<Settlement> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/settlements/mine/paid`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function confirmPayment(
+  shareCode: string,
+  token: string,
+  settlementId: string,
+): Promise<Settlement> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/settlements/${settlementId}/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function paymentNotReceived(
+  shareCode: string,
+  token: string,
+  settlementId: string,
+): Promise<Settlement> {
+  return request(`/bills/${encodeURIComponent(shareCode)}/settlements/${settlementId}/not-received`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
 

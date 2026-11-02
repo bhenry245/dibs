@@ -340,6 +340,15 @@ function ClaimItems({
         ))}
       </ul>
 
+      {!isOpen && (
+        <Link
+          to={`/b/${encodeURIComponent(bill.share_code)}/claimed`}
+          className="rounded-lg bg-gray-900 px-4 py-3 text-center font-semibold text-white hover:bg-gray-700"
+        >
+          See what you owe
+        </Link>
+      )}
+
       {isOpen && (
         <div className="sticky bottom-0 flex flex-col gap-2 bg-gray-50 py-2">
           <button
@@ -361,6 +370,19 @@ function ClaimItems({
         </div>
       )}
 
+      {/* After everything else on this screen, because locking is the Captain's last step. Picks that
+          haven't been saved would be lost, so those come first. */}
+      {isCaptain && isOpen && !hasChanges && (
+        <Link
+          to={`/bills/${encodeURIComponent(bill.share_code)}/lock`}
+          className="rounded-lg border border-gray-900 bg-white px-4 py-3 text-center font-semibold text-gray-900 hover:bg-gray-100"
+        >
+          Lock bill
+        </Link>
+      )}
+      {isCaptain && isOpen && hasChanges && (
+        <p className="text-sm text-gray-600">Call dibs on your picks before you lock the bill.</p>
+      )}
       <YourTotal
         bill={bill}
         identity={identity}

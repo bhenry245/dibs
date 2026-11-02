@@ -85,6 +85,7 @@ function fakeApi({
       state.claims = applyPicks(state.claims, me!, itemIds)
       return jsonResponse(200, personTotal(me!, state.claims))
     }
+    if (url.endsWith('/settlements')) return jsonResponse(200, [])
     if (url.endsWith('/totals')) {
       if (totalsResponse) return totalsResponse()
       return jsonResponse(200, {
@@ -724,7 +725,7 @@ test('on a locked bill, the warning and the way back to picking are gone', async
   state.claims.burger = [{ crew_member_id: 'ana', shares: 1 }]
   renderAs('ana', '/b/abc123/claimed')
 
-  expect(await screen.findByText('Venmo')).toBeInTheDocument()
+  expect(await screen.findByText("You don't owe anything on this bill.")).toBeInTheDocument()
   expect(screen.queryByText(/may change/)).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Change my items' })).not.toBeInTheDocument()
 })

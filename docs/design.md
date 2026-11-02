@@ -100,6 +100,8 @@ stateDiagram-v2
 - **LOCKED:** claims are frozen and final amounts are computed. Unclaimed items are assigned to the Captain, who is warned prominently first. Reminders start.
 - **SETTLED:** every crew member's payment has been confirmed.
 
+**Locking is safe against a claim at the same moment:** claims hold a shared lock on the bill's row while they save, and locking takes an exclusive one. A claim either finishes first and counts, or waits and is refused. Final amounts are stored in `SETTLEMENT`, not recalculated later. The Captain can reopen a locked bill until someone has paid.
+
 **Why a lock step?** If amounts were final the moment someone claimed, a person joining the nachos later would silently change everyone else's total. Locking gives a single moment where amounts become final, and that is when crew members are told what they owe.
 
 **Paying before the lock:** until locking is built, the confirmation screen shows the Captain's payment info with a note that totals can change if someone shares an item. Payment handles are stored per bill until Captains have logins, so nobody can overwrite another Captain's handles by typing their email.
@@ -329,7 +331,11 @@ erDiagram
         uuid id PK
         uuid bill_id FK
         uuid crew_member_id FK
-        int amount_cents
+        int subtotal_cents
+        int tax_cents
+        int tip_cents
+        int fees_cents
+        int total_cents
         string status "OWED|MARKED_PAID|CONFIRMED"
         timestamptz marked_paid_at
         timestamptz confirmed_at
@@ -346,7 +352,7 @@ erDiagram
 
 Notes:
 - The Captain also gets a `CREW_MEMBER` row on each bill, so their own items are claimed the same way as everyone else's.
-- `SETTLEMENT` rows are created at lock time. Before that, amounts are computed live from claims.
+- `SETTLEMENT` rows are created at lock time. Before that, amounts are computed live from claims. The Captain and anyone who owes nothing don't get one.
 - A unique constraint on `(line_item_id, crew_member_id)` stops a person claiming the same item twice.
 
 ## 15. Security and privacy

@@ -1,20 +1,55 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
-import { type Bill, getBill, getTotals } from '../api.ts'
+import {
+  type Bill,
+  describeError,
+  getBill,
+  getSettlements,
+  getTotals,
+  markPaid,
+  type Settlement,
+} from '../api.ts'
 import { isClaimedBy, listNames, otherClaimers } from '../claims.ts'
 import { loadIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
+import { cashAppLink, venmoLink } from '../payment.ts'
 import TotalSummary from '../TotalSummary.tsx'
 import { useLiveBill } from '../useLiveBill.ts'
 
-function HowToPay({ bill, captainName }: { bill: Bill; captainName: string }) {
+// Links only appear once a bill is locked, because before that the amount can still change.
+function HowToPay({
+  bill,
+  captainName,
+  settlement,
+  token,
+}: {
+  bill: Bill
+  captainName: string
+  settlement: Settlement | undefined
+  token: string
+}) {
+  const queryClient = useQueryClient()
+  const paid = useMutation({
+    mutationFn: () => markPaid(bill.share_code, token),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settlements', bill.share_code] }),
+  })
+  const amount = settlement?.total_cents
+  const note = bill.restaurant_name ?? 'Dibs'
   const methods = [
-    { label: 'Venmo', value: bill.venmo_handle },
-    { label: 'Cash App', value: bill.cashapp_tag },
-    { label: 'Zelle', value: bill.zelle_contact },
+    {
+      label: 'Venmo',
+      value: bill.venmo_handle,
+      href: bill.venmo_handle && amount ? venmoLink(bill.venmo_handle, amount, note) : null,
+    },
+    {
+      label: 'Cash App',
+      value: bill.cashapp_tag,
+      href: bill.cashapp_tag && amount ? cashAppLink(bill.cashapp_tag, amount) : null,
+    },
+    { label: 'Zelle', value: bill.zelle_contact, href: null },
   ].filter((method) => method.value)
 
   return (
@@ -25,7 +60,15 @@ function HowToPay({ bill, captainName }: { bill: Bill; captainName: string }) {
           {methods.map((method) => (
             <div key={method.label} className="flex justify-between gap-4 text-gray-900">
               <dt>{method.label}</dt>
-              <dd className="min-w-0 font-medium break-all">{method.value}</dd>
+              <dd className="min-w-0 font-medium break-all">
+                {method.href ? (
+                  <a href={method.href} className="underline" rel="noreferrer" target="_blank">
+                    {method.value}
+                  </a>
+                ) : (
+                  method.value
+                )}
+              </dd>
             </div>
           ))}
         </dl>
@@ -40,6 +83,29 @@ function HowToPay({ bill, captainName }: { bill: Bill; captainName: string }) {
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
           Your total may change if someone shares your items. Wait for {captainName} to confirm
           before paying.
+        </p>
+      )}
+      {settlement?.status === 'OWED' && (
+        <button
+          type="button"
+          className="rounded-lg bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
+          disabled={paid.isPending}
+          onClick={() => paid.mutate()}
+        >
+          {paid.isPending ? 'Saving…' : 'I paid'}
+        </button>
+      )}
+      {settlement?.status === 'MARKED_PAID' && (
+        <p className="text-sm font-medium text-gray-700">Waiting for {captainName} to confirm.</p>
+      )}
+      {settlement?.status === 'CONFIRMED' && (
+        <p className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
+          {captainName} confirmed your payment.
+        </p>
+      )}
+      {paid.error && (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+          {describeError(paid.error)}
         </p>
       )}
     </section>
@@ -64,6 +130,13 @@ function ClaimedPage() {
     queryFn: () => getTotals(shareCode),
     refetchInterval: pollMs,
     enabled: identity !== null,
+  })
+  const isOpen = billQuery.data?.status === 'OPEN'
+  const settlementsQuery = useQuery({
+    queryKey: ['settlements', shareCode],
+    queryFn: () => getSettlements(shareCode),
+    enabled: identity !== null && billQuery.data !== undefined && !isOpen,
+    refetchInterval: billQuery.data?.status === 'LOCKED' ? pollMs : false,
   })
 
   if (!identity) return <Navigate to={billPage} replace />
@@ -92,7 +165,10 @@ function ClaimedPage() {
 
   const captainName = bill.crew.find((member) => member.is_captain)?.name ?? 'the Captain'
   const myItems = bill.items.filter((item) => isClaimedBy(item, myId))
-  const myTotal = totalsQuery.data?.people.find((person) => person.crew_member_id === myId)
+  const mySettlement = settlementsQuery.data?.find((row) => row.crew_member_id === myId)
+  // Once a bill is locked, the stored amount is the one that counts.
+  const myTotal =
+    mySettlement ?? totalsQuery.data?.people.find((person) => person.crew_member_id === myId)
 
   return (
     <Page>
@@ -138,7 +214,17 @@ function ClaimedPage() {
       )}
 
       {/* The Captain already paid the restaurant, so they have nobody to pay. */}
-      {!me.is_captain && myItems.length > 0 && <HowToPay bill={bill} captainName={captainName} />}
+      {!me.is_captain && (isOpen ? myItems.length > 0 : mySettlement !== undefined) && (
+        <HowToPay
+          bill={bill}
+          captainName={captainName}
+          settlement={mySettlement}
+          token={identity.token}
+        />
+      )}
+      {!me.is_captain && !isOpen && settlementsQuery.isSuccess && !mySettlement && (
+        <p className="text-gray-700">You don&apos;t owe anything on this bill.</p>
+      )}
 
       <div className="flex flex-col gap-3">
         {bill.status === 'OPEN' && (
@@ -147,6 +233,14 @@ function ClaimedPage() {
             className="rounded-lg border border-gray-900 bg-white px-4 py-3 text-center font-semibold text-gray-900 hover:bg-gray-100"
           >
             {myItems.length > 0 ? 'Change my items' : 'Pick my items'}
+          </Link>
+        )}
+        {me.is_captain && bill.status === 'OPEN' && (
+          <Link
+            to={`/bills/${encodeURIComponent(shareCode)}/lock`}
+            className="rounded-lg bg-gray-900 px-4 py-3 text-center font-semibold text-white hover:bg-gray-700"
+          >
+            Lock bill
           </Link>
         )}
         {me.is_captain && (

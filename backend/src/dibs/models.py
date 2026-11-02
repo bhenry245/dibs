@@ -152,6 +152,39 @@ class Claim(Base):
         ForeignKey("crew_member.id", ondelete="CASCADE"), index=True
     )
     shares: Mapped[int] = mapped_column(server_default="1")
+    # Made by locking the bill rather than by the person, so reopening knows to undo it.
+    assigned_at_lock: Mapped[bool] = mapped_column(server_default=text("false"))
+
+
+# What one person owes once a bill is locked. The amounts are stored, so nothing that happens later
+# can change what they were told. The Captain has none, because they already paid the restaurant.
+class Settlement(Base):
+    __tablename__ = "settlement"
+    __table_args__ = (
+        CheckConstraint("status IN ('OWED', 'MARKED_PAID', 'CONFIRMED')", name="status_valid"),
+        CheckConstraint(
+            "subtotal_cents >= 0 AND tax_cents >= 0 AND tip_cents >= 0 AND fees_cents >= 0 "
+            "AND total_cents >= 0",
+            name="amounts_not_negative",
+        ),
+        UniqueConstraint("crew_member_id", name="uq_settlement_crew_member_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    bill_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("bill.id", ondelete="CASCADE"), index=True
+    )
+    crew_member_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("crew_member.id", ondelete="CASCADE")
+    )
+    subtotal_cents: Mapped[int]
+    tax_cents: Mapped[int]
+    tip_cents: Mapped[int]
+    fees_cents: Mapped[int]
+    total_cents: Mapped[int]
+    status: Mapped[str] = mapped_column(String(20), server_default="OWED")
+    marked_paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # A signed upload the API handed out. The browser only ever refers to this row's id, so it can't

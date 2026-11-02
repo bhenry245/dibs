@@ -169,6 +169,24 @@ class ClaimResponse(BaseModel):
     shares: int
 
 
+# Where unclaimed items go when the bill locks: item -> crew member. Anything left out goes to the
+# Captain (design §8).
+class LockRequest(BaseModel):
+    assignments: dict[uuid.UUID, uuid.UUID] = Field(default_factory=dict)
+
+
+class SettlementOut(BaseModel):
+    id: uuid.UUID
+    crew_member_id: uuid.UUID
+    name: str
+    subtotal_cents: int
+    tax_cents: int
+    tip_cents: int
+    fees_cents: int
+    total_cents: int
+    status: str
+
+
 class PersonTotalOut(BaseModel):
     crew_member_id: uuid.UUID
     name: str

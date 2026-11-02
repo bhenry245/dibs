@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router'
 import BillPage from './pages/BillPage.tsx'
 import ClaimedPage from './pages/ClaimedPage.tsx'
 import CreateBillPage from './pages/CreateBillPage.tsx'
+import LockBillPage from './pages/LockBillPage.tsx'
 import ReviewBillPage from './pages/ReviewBillPage.tsx'
 import ShareBillPage from './pages/ShareBillPage.tsx'
 
@@ -10,6 +11,7 @@ function App() {
     <Routes>
       <Route path="/" element={<CreateBillPage />} />
       <Route path="/bills/:shareCode/review" element={<ReviewBillPage />} />
+      <Route path="/bills/:shareCode/lock" element={<LockBillPage />} />
       <Route path="/bills/:shareCode/share" element={<ShareBillPage />} />
       <Route path="/b/:shareCode" element={<BillPage />} />
       <Route path="/b/:shareCode/claimed" element={<ClaimedPage />} />

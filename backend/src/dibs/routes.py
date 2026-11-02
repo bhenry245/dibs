@@ -76,8 +76,17 @@ VisibleBill = Annotated[Bill, Depends(get_visible_bill)]
 
 
 # Joining and claiming only happen while a bill is OPEN. After the lock, amounts are final.
-def require_open(bill: Bill) -> None:
-    if bill.status != "OPEN":
+# Checks the bill while holding a shared lock on its row until the request commits. Claims can still
+# run side by side, but locking the bill waits for them, and they wait for it, so a claim can never
+# sneak in after the final amounts are worked out.
+async def require_open(session: AsyncSession, bill_id: uuid.UUID) -> None:
+    bill = await session.scalar(
+        select(Bill)
+        .where(Bill.id == bill_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if bill is None or bill.status != "OPEN":
         raise HTTPException(status.HTTP_409_CONFLICT, "bill is not open")
 
 
@@ -89,7 +98,7 @@ async def get_claimable_item(
     item = await session.get(LineItem, item_id)
     if item is None or item.bill_id != crew_member.bill_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
-    require_open(await session.get_one(Bill, item.bill_id))
+    await require_open(session, item.bill_id)
     return item
 
 
@@ -242,7 +251,7 @@ async def get_bill(bill: VisibleBill, session: Session) -> BillOut:
 
 @router.post("/bills/{share_code}/join", status_code=status.HTTP_201_CREATED)
 async def join_bill(body: JoinRequest, bill: VisibleBill, session: Session) -> JoinResponse:
-    require_open(bill)
+    await require_open(session, bill.id)
     token = secrets.token_urlsafe(32)
     crew_member = CrewMember(
         bill_id=bill.id,
@@ -298,7 +307,7 @@ async def check_my_claims(
 ) -> set[uuid.UUID]:
     if crew_member.bill_id != bill.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "you aren't on this bill")
-    require_open(bill)
+    await require_open(session, bill.id)
     item_ids = set(body.item_ids)
     items_on_bill = set(
         await session.scalars(select(LineItem.id).where(LineItem.bill_id == bill.id))
@@ -366,11 +375,14 @@ async def get_totals(bill: VisibleBill, session: Session) -> BillTotals:
     return await calculate_totals(session, bill)
 
 
-# With picks, works out the totals as if that person had claimed exactly those items.
+# With picks, works out the totals as if that person had claimed exactly those items. With
+# assignments, as if the bill were locking: unclaimed items go to whoever they're assigned to, or
+# the Captain.
 async def calculate_totals(
     session: AsyncSession,
     bill: Bill,
     picks: tuple[uuid.UUID, set[uuid.UUID]] | None = None,
+    assignments: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> BillTotals:
     crew = await load_crew(session, bill.id)
     items = await load_items(session, bill.id)
@@ -388,7 +400,10 @@ async def calculate_totals(
                 dibs.pop(person_id, None)
         if not dibs:
             unclaimed_item_ids.append(item.id)
-            dibs = {UNCLAIMED: 1}
+            if assignments is None:
+                dibs = {UNCLAIMED: 1}
+            else:
+                dibs = {assignments.get(item.id, crew[0].id): 1}
         money_items.append(Item(item.price_cents, dibs))
 
     totals = split_bill(
