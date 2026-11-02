@@ -112,28 +112,37 @@ test('Join! stays greyed out until there is a name and a phone or email', async 
 
   await user.type(screen.getByLabelText('Your name'), 'Ana')
   expect(join).toBeDisabled()
-  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.type(screen.getByLabelText('Phone or email'), '555-0100')
   expect(join).toBeEnabled()
 
-  await user.clear(screen.getByLabelText('Phone'))
+  await user.clear(screen.getByLabelText('Phone or email'))
   expect(join).toBeDisabled()
-  await user.type(screen.getByLabelText('Email'), 'ana@example.com')
+  await user.type(screen.getByLabelText('Phone or email'), 'ana@example.com')
   expect(join).toBeEnabled()
 
   await user.clear(screen.getByLabelText('Your name'))
   expect(join).toBeDisabled()
 })
 
-test.each(['not-an-email', 'ana@example', 'ana @example.com'])(
-  'Join! stays greyed out for the email %s, even with a phone',
-  async (email) => {
+test('name and phone or email are both marked as required', async () => {
+  stubApi()
+  renderBillPage()
+
+  for (const label of ['Your name', 'Phone or email']) {
+    expect(await screen.findByLabelText(label)).toBeRequired()
+    expect(screen.getByText(label)).toHaveClass("after:content-['*']", 'after:text-red-600')
+  }
+})
+
+test.each(['not-an-email', 'ana@example', 'ana @example.com', '12345', 'call me'])(
+  'Join! stays greyed out for %s',
+  async (contact) => {
     const user = userEvent.setup()
     stubApi()
     renderBillPage()
 
     await user.type(await screen.findByLabelText('Your name'), 'Ana')
-    await user.type(screen.getByLabelText('Phone'), '555-0100')
-    await user.type(screen.getByLabelText('Email'), email)
+    await user.type(screen.getByLabelText('Phone or email'), contact)
 
     expect(screen.getByRole('button', { name: 'Join!' })).toBeDisabled()
   },
@@ -145,7 +154,7 @@ test('the modal closes once you have joined', async () => {
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.type(screen.getByLabelText('Phone or email'), '555-0100')
   await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   await screen.findByText("You're in, Ana.")
@@ -207,7 +216,7 @@ test('joining sends the details, keeps the token and lets them in', async () => 
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), '  Ana ')
-  await user.type(screen.getByLabelText('Email'), 'ana@example.com')
+  await user.type(screen.getByLabelText('Phone or email'), 'ana@example.com')
   await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   expect(await screen.findByText("You're in, Ana.")).toBeInTheDocument()
@@ -228,7 +237,7 @@ test('a phone number alone is enough to join', async () => {
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.type(screen.getByLabelText('Phone or email'), '555-0100')
   await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   await screen.findByText("You're in, Ana.")
@@ -245,7 +254,7 @@ test('pressing Enter with nothing filled in sends nothing', async () => {
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '   {Enter}')
+  await user.type(screen.getByLabelText('Phone or email'), '   {Enter}')
 
   expect(joinCalls(fetchMock)).toHaveLength(0)
 })
@@ -324,7 +333,7 @@ test('shows when the bill locks just as they join, and keeps what they typed', a
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.type(screen.getByLabelText('Phone or email'), '555-0100')
   await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('bill is not open')
@@ -339,7 +348,7 @@ test('a second tap while joining does not add them twice', async () => {
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.type(screen.getByLabelText('Phone or email'), '555-0100')
   await user.click(screen.getByRole('button', { name: 'Join!' }))
   const button = await screen.findByRole('button', { name: 'Joining…' })
   expect(button).toBeDisabled()

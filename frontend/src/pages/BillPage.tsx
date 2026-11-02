@@ -12,9 +12,9 @@ import { type Identity, loadIdentity, saveIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
-import { INPUT_CLASS } from '../styles.ts'
+import { INPUT_CLASS, REQUIRED_LABEL_CLASS } from '../styles.ts'
 import { useLiveBill } from '../useLiveBill.ts'
-import { isValidEmail } from '../validation.ts'
+import { parseContact } from '../validation.ts'
 import ClaimItems from './ClaimItems.tsx'
 
 function ItemList({ bill }: { bill: Bill }) {
@@ -76,19 +76,17 @@ function JoinModal({
   const title = `${bill.restaurant_name ?? `${captain?.name}'s`} bill`
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  const [contact, setContact] = useState('')
 
   // Greys out the button until the form can succeed. The API still checks everything itself.
-  const hasValidEmail = !email.trim() || isValidEmail(email)
-  const canJoin = Boolean(name.trim() && (phone.trim() || email.trim()) && hasValidEmail)
+  const parsedContact = parseContact(contact)
+  const canJoin = Boolean(name.trim() && parsedContact)
 
   const mutation = useMutation({
     mutationFn: () =>
       joinBill(shareCode, {
         name: name.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
+        ...parsedContact!,
       }),
     onSuccess: (joined) => {
       const identity = { crewMemberId: joined.crew_member_id, token: joined.token }
@@ -130,7 +128,7 @@ function JoinModal({
         </h2>
         <p className="text-sm text-gray-600">Join to call dibs on what you had.</p>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
-          Your name
+          <span className={REQUIRED_LABEL_CLASS}>Your name</span>
           <input
             className={INPUT_CLASS}
             value={name}
@@ -141,30 +139,21 @@ function JoinModal({
             required
           />
         </label>
-        <p className="text-sm text-gray-600">
-          Add a phone number or an email, so you can get a reminder to pay.
-        </p>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
-          Phone
+          <span className={REQUIRED_LABEL_CLASS}>Phone or email</span>
           <input
             className={INPUT_CLASS}
-            type="tel"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            autoComplete="tel"
-            maxLength={32}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-gray-700">
-          Email
-          <input
-            className={INPUT_CLASS}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            value={contact}
+            onChange={(event) => setContact(event.target.value)}
             autoComplete="email"
+            maxLength={320}
+            aria-describedby="contact-hint"
+            required
           />
         </label>
+        <p id="contact-hint" className="-mt-2 text-sm text-gray-600">
+          So we can remind you to pay.
+        </p>
 
         {mutation.error && (
           <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
