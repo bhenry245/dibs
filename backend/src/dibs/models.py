@@ -88,6 +88,7 @@ class Bill(Base):
     venmo_handle: Mapped[str | None] = mapped_column(String(50))
     cashapp_tag: Mapped[str | None] = mapped_column(String(50))
     zelle_contact: Mapped[str | None] = mapped_column(String(320))
+    paypal_handle: Mapped[str | None] = mapped_column(String(50))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cashAppLink, venmoLink } from './payment.ts'
+import { cashAppLink, payPalLink, venmoLink } from './payment.ts'
 
 test('a Venmo link fills in who, how much and what for', () => {
   expect(venmoLink('brandon', 1856, "Luigi's")).toBe(
@@ -18,9 +18,20 @@ test('a Cash App link fills in who and how much', () => {
   expect(cashAppLink('brandon', 5)).toBe('https://cash.app/$brandon/0.05')
 })
 
+test.each([
+  'brandonpays',
+  '@brandonpays',
+  ' paypal.me/brandonpays ',
+  'https://paypal.me/brandonpays/',
+  'https://www.PayPal.me/brandonpays',
+])('a PayPal link works from %j', (handle) => {
+  expect(payPalLink(handle, 1856)).toBe('https://paypal.me/brandonpays/18.56USD')
+})
+
 test('a handle cannot change where a link goes', () => {
   expect(venmoLink('../evil?x=1', 100, 'a&b=c')).toBe(
     'https://venmo.com/..%2Fevil%3Fx%3D1?txn=pay&amount=1.00&note=a%26b%3Dc',
   )
   expect(cashAppLink('../evil', 100)).toBe('https://cash.app/$..%2Fevil/1.00')
+  expect(payPalLink('../evil', 100)).toBe('https://paypal.me/..%2Fevil/1.00USD')
 })

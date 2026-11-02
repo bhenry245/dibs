@@ -58,7 +58,7 @@ Dibs **never handles money**. It only tracks who owes what and nudges people to 
 - As a crew member, I scan the QR, enter my name and contact info, select my items, and confirm them with "Call dibs".
 - As a crew member, I can share an item (such as an appetizer) with others.
 - As a crew member, I see a clear breakdown: my items, my share of tax and tip, and my total.
-- As a crew member, I can pay with one tap (a prefilled Venmo or Cash App link, or the Captain's Zelle info) and mark myself as paid.
+- As a crew member, I can pay with one tap (a prefilled Venmo, Cash App or PayPal link, or the Captain's Zelle info) and mark myself as paid.
 
 ## 5. Core flow
 
@@ -301,6 +301,7 @@ erDiagram
         string venmo_handle
         string cashapp_tag
         string zelle_contact
+        string paypal_handle
         timestamptz locked_at
         timestamptz created_at
     }

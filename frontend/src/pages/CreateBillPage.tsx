@@ -30,6 +30,7 @@ function CreateBillPage() {
     venmo: '',
     cashApp: '',
     zelle: '',
+    payPal: '',
   }))
   const [formError, setFormError] = useState<string | null>(null)
 

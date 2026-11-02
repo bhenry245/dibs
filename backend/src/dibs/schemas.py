@@ -47,6 +47,7 @@ class BillDetails(BaseModel):
     venmo_handle: PaymentHandle | None = None
     cashapp_tag: PaymentHandle | None = None
     zelle_contact: ZelleContact | None = None
+    paypal_handle: PaymentHandle | None = None
     items: list[LineItemCreate] = Field(min_length=1, max_length=MAX_ITEMS)
 
     # Tax, tip and fees are split in proportion to item prices, so they need a price to split
@@ -120,6 +121,7 @@ class BillOut(BaseModel):
     venmo_handle: str | None
     cashapp_tag: str | None
     zelle_contact: str | None
+    paypal_handle: str | None
     items: list[LineItemOut]
     crew: list[CrewMemberOut]
 

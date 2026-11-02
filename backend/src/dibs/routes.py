@@ -149,6 +149,7 @@ async def build_bill_out(session: AsyncSession, bill: Bill) -> BillOut:
         venmo_handle=bill.venmo_handle,
         cashapp_tag=bill.cashapp_tag,
         zelle_contact=bill.zelle_contact,
+        paypal_handle=bill.paypal_handle,
         items=[
             LineItemOut(
                 id=item.id,
@@ -196,6 +197,7 @@ def apply_details(bill: Bill, details: BillDetails) -> None:
     bill.venmo_handle = details.venmo_handle
     bill.cashapp_tag = details.cashapp_tag
     bill.zelle_contact = details.zelle_contact
+    bill.paypal_handle = details.paypal_handle
 
 
 def add_items(session: AsyncSession, bill: Bill, details: BillDetails) -> None:

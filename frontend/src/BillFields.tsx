@@ -152,6 +152,15 @@ function BillFields({
             maxLength={320}
           />
         </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          PayPal (your PayPal.Me name)
+          <input
+            className={INPUT_CLASS}
+            value={values.payPal}
+            onChange={(event) => onChange({ payPal: event.target.value })}
+            maxLength={50}
+          />
+        </label>
       </section>
     </>
   )

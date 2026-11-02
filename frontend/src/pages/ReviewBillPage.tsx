@@ -22,6 +22,7 @@ function snapshot(restaurantName: string, values: BillFormValues): string {
     values.venmo,
     values.cashApp,
     values.zelle,
+    values.payPal,
   ])
 }
 
@@ -81,6 +82,7 @@ function ReviewForm({
     venmo: initialDraft.bill.venmo_handle ?? '',
     cashApp: initialDraft.bill.cashapp_tag ?? '',
     zelle: initialDraft.bill.zelle_contact ?? '',
+    payPal: initialDraft.bill.paypal_handle ?? '',
   }))
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(restaurantName, values))
   const [formError, setFormError] = useState<string | null>(null)

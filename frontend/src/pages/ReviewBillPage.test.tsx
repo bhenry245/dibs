@@ -212,6 +212,7 @@ test('editing asks you to save, and saving sends cents and updates the total', a
     venmo_handle: null,
     cashapp_tag: null,
     zelle_contact: null,
+    paypal_handle: null,
     items: [
       { description: 'Burger', price_cents: 1999 },
       { description: 'Salad', price_cents: 1000 },
@@ -307,11 +308,12 @@ test('payment info can be added during review, and counts as unsaved', async () 
 })
 
 test('payment info already on a draft loads into the form', async () => {
-  stubApi({ draft: makeDraft({}, { cashapp_tag: '$brandon' }) })
+  stubApi({ draft: makeDraft({}, { cashapp_tag: '$brandon', paypal_handle: 'brandonpays' }) })
   renderReviewPage()
   await loaded()
 
   expect(screen.getByLabelText('Cash App')).toHaveValue('$brandon')
+  expect(screen.getByLabelText('PayPal (your PayPal.Me name)')).toHaveValue('brandonpays')
 })
 
 test('items can be added and removed', async () => {

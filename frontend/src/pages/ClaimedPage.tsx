@@ -15,7 +15,7 @@ import { loadIdentity } from '../identity.ts'
 import LoadError from '../LoadError.tsx'
 import { formatCents } from '../money.ts'
 import Page from '../Page.tsx'
-import { cashAppLink, venmoLink } from '../payment.ts'
+import { cashAppLink, payPalLink, venmoLink } from '../payment.ts'
 import TotalSummary from '../TotalSummary.tsx'
 import { useLiveBill } from '../useLiveBill.ts'
 
@@ -50,6 +50,11 @@ function HowToPay({
       href: bill.cashapp_tag && amount ? cashAppLink(bill.cashapp_tag, amount) : null,
     },
     { label: 'Zelle', value: bill.zelle_contact, href: null },
+    {
+      label: 'PayPal',
+      value: bill.paypal_handle,
+      href: bill.paypal_handle && amount ? payPalLink(bill.paypal_handle, amount) : null,
+    },
   ].filter((method) => method.value)
 
   return (

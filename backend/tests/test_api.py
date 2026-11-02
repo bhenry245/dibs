@@ -585,7 +585,11 @@ async def test_captain_preview_only_counts_what_they_pick(client: AsyncClient):
 
 async def test_payment_info_is_saved_on_the_bill_for_the_crew_to_see(client: AsyncClient):
     created = await create_bill(
-        client, venmo_handle=" @brandon ", cashapp_tag="$brandon", zelle_contact="555-0100"
+        client,
+        venmo_handle=" @brandon ",
+        cashapp_tag="$brandon",
+        zelle_contact="555-0100",
+        paypal_handle="brandonpays",
     )
 
     bill = (await client.get(f"/bills/{created['bill']['share_code']}")).json()
@@ -593,6 +597,7 @@ async def test_payment_info_is_saved_on_the_bill_for_the_crew_to_see(client: Asy
     assert bill["venmo_handle"] == "@brandon"
     assert bill["cashapp_tag"] == "$brandon"
     assert bill["zelle_contact"] == "555-0100"
+    assert bill["paypal_handle"] == "brandonpays"
 
 
 async def test_payment_info_is_optional(client: AsyncClient):
@@ -610,7 +615,7 @@ async def test_a_second_bill_cannot_change_another_bills_payment_info(client: As
     assert bill["venmo_handle"] == "@real"
 
 
-@pytest.mark.parametrize("field", ["venmo_handle", "cashapp_tag"])
+@pytest.mark.parametrize("field", ["venmo_handle", "cashapp_tag", "paypal_handle"])
 async def test_overlong_payment_info_is_rejected(client: AsyncClient, field: str):
     response = await client.post("/bills", json=bill_body(**{field: "x" * 51}))
 

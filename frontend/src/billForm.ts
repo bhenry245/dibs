@@ -17,6 +17,7 @@ export type BillFormValues = {
   venmo: string
   cashApp: string
   zelle: string
+  payPal: string
 }
 
 // A stable id for each row, so React keeps typed text with the right row when one is removed.
@@ -71,6 +72,7 @@ export function buildDetails(values: BillFormValues, restaurantName: string): Bi
     venmo_handle: values.venmo.trim() || null,
     cashapp_tag: values.cashApp.trim() || null,
     zelle_contact: values.zelle.trim() || null,
+    paypal_handle: values.payPal.trim() || null,
     items,
   }
 }

@@ -340,7 +340,12 @@ test('after the lock, crew see their final amount, pay links and no warning', as
   const { state } = fakeApi({
     status: 'LOCKED',
     settlements: [row('ana', 'Anna', 1856)],
-    handles: { venmo_handle: '@brandon', cashapp_tag: '$brandon', zelle_contact: '555-0100' },
+    handles: {
+      venmo_handle: '@brandon',
+      cashapp_tag: '$brandon',
+      zelle_contact: '555-0100',
+      paypal_handle: 'brandonpays',
+    },
   })
   state.claims.burger = [{ crew_member_id: 'ana', shares: 1 }]
   renderAs('ana', CLAIMED_PAGE)
@@ -352,6 +357,10 @@ test('after the lock, crew see their final amount, pay links and no warning', as
   expect(screen.getByRole('link', { name: '$brandon' })).toHaveAttribute(
     'href',
     'https://cash.app/$brandon/18.56',
+  )
+  expect(screen.getByRole('link', { name: 'brandonpays' })).toHaveAttribute(
+    'href',
+    'https://paypal.me/brandonpays/18.56USD',
   )
   expect(screen.getByText('555-0100')).toBeInTheDocument()
   expect((await screen.findByRole('heading', { name: 'You owe' })).nextSibling).toHaveTextContent(

@@ -15,6 +15,7 @@ export type BillDetails = {
   venmo_handle: string | null
   cashapp_tag: string | null
   zelle_contact: string | null
+  paypal_handle: string | null
   items: { description: string; price_cents: number }[]
 }
 
@@ -36,6 +37,7 @@ export type Bill = {
   venmo_handle: string | null
   cashapp_tag: string | null
   zelle_contact: string | null
+  paypal_handle: string | null
   items: {
     id: string
     description: string
