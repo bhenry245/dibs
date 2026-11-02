@@ -385,7 +385,7 @@ test('someone who has not joined gets a plain list, with nothing to tap', async 
   const list = (await screen.findByText('Burger')).closest('ul')!
 
   expect(within(list).queryByRole('button')).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Join!' })).toBeInTheDocument()
   expect(callsTo(fetchMock, '/totals')).toHaveLength(0)
 })
 
@@ -709,14 +709,14 @@ test('someone not on the bill is sent to join it', async () => {
   fakeApi()
   renderAs('not-on-this-bill', '/b/abc123/claimed')
 
-  expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Join!' })).toBeInTheDocument()
 })
 
 test('someone with no saved identity is sent to join it', async () => {
   fakeApi()
   renderPage('/b/abc123/claimed')
 
-  expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Join!' })).toBeInTheDocument()
 })
 
 test('on a locked bill, the warning and the way back to picking are gone', async () => {

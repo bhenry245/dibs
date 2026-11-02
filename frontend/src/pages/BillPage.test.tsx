@@ -84,7 +84,85 @@ test('shows the bill to someone who just scanned the QR', async () => {
   expect(screen.getByText('$20.00')).toBeInTheDocument()
   expect(screen.getByText('$49.92')).toBeInTheDocument()
   expect(screen.getByText('At the table: Brandon')).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Join this bill' })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: "Luigi's bill" })).toBeInTheDocument()
+})
+
+test('the join modal uses the Captain\'s name when there is no restaurant name', async () => {
+  stubApi({ bill: { ...BILL, restaurant_name: null } })
+
+  renderBillPage()
+
+  expect(await screen.findByRole('dialog', { name: "Brandon's bill" })).toBeInTheDocument()
+})
+
+test('the join modal opens with the name field ready to type in', async () => {
+  stubApi()
+
+  renderBillPage()
+
+  expect(await screen.findByLabelText('Your name')).toHaveFocus()
+})
+
+test('Join! stays greyed out until there is a name and a phone or email', async () => {
+  const user = userEvent.setup()
+  stubApi()
+  renderBillPage()
+  const join = await screen.findByRole('button', { name: 'Join!' })
+  expect(join).toBeDisabled()
+
+  await user.type(screen.getByLabelText('Your name'), 'Ana')
+  expect(join).toBeDisabled()
+  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  expect(join).toBeEnabled()
+
+  await user.clear(screen.getByLabelText('Phone'))
+  expect(join).toBeDisabled()
+  await user.type(screen.getByLabelText('Email'), 'ana@example.com')
+  expect(join).toBeEnabled()
+
+  await user.clear(screen.getByLabelText('Your name'))
+  expect(join).toBeDisabled()
+})
+
+test.each(['not-an-email', 'ana@example', 'ana @example.com'])(
+  'Join! stays greyed out for the email %s, even with a phone',
+  async (email) => {
+    const user = userEvent.setup()
+    stubApi()
+    renderBillPage()
+
+    await user.type(await screen.findByLabelText('Your name'), 'Ana')
+    await user.type(screen.getByLabelText('Phone'), '555-0100')
+    await user.type(screen.getByLabelText('Email'), email)
+
+    expect(screen.getByRole('button', { name: 'Join!' })).toBeDisabled()
+  },
+)
+
+test('the modal closes once you have joined', async () => {
+  const user = userEvent.setup()
+  stubApi()
+  renderBillPage()
+
+  await user.type(await screen.findByLabelText('Your name'), 'Ana')
+  await user.type(screen.getByLabelText('Phone'), '555-0100')
+  await user.click(screen.getByRole('button', { name: 'Join!' }))
+
+  await screen.findByText("You're in, Ana.")
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('someone already on the bill never sees the modal', async () => {
+  localStorage.setItem(
+    'dibs.identity.abc123',
+    JSON.stringify({ crewMemberId: 'cap', token: 'cap-token' }),
+  )
+  stubApi()
+
+  renderBillPage()
+
+  await screen.findByText("You're in, Brandon.")
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 test('shows the subtotal, and fees only when there are some', async () => {
@@ -130,7 +208,7 @@ test('joining sends the details, keeps the token and lets them in', async () => 
 
   await user.type(await screen.findByLabelText('Your name'), '  Ana ')
   await user.type(screen.getByLabelText('Email'), 'ana@example.com')
-  await user.click(screen.getByRole('button', { name: 'Join' }))
+  await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   expect(await screen.findByText("You're in, Ana.")).toBeInTheDocument()
   const [url, init] = joinCalls(fetchMock)[0]
@@ -140,7 +218,7 @@ test('joining sends the details, keeps the token and lets them in', async () => 
     crewMemberId: 'ana',
     token: 'ana-token',
   })
-  expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Join!' })).not.toBeInTheDocument()
   expect(await screen.findByText('At the table: Brandon, Ana')).toBeInTheDocument()
 })
 
@@ -151,7 +229,7 @@ test('a phone number alone is enough to join', async () => {
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
   await user.type(screen.getByLabelText('Phone'), '555-0100')
-  await user.click(screen.getByRole('button', { name: 'Join' }))
+  await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   await screen.findByText("You're in, Ana.")
   expect(JSON.parse(joinCalls(fetchMock)[0][1].body)).toEqual({
@@ -161,16 +239,14 @@ test('a phone number alone is enough to join', async () => {
   })
 })
 
-test('asks for a phone or email before joining', async () => {
+test('pressing Enter with nothing filled in sends nothing', async () => {
   const user = userEvent.setup()
   const fetchMock = stubApi()
   renderBillPage()
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
-  await user.type(screen.getByLabelText('Phone'), '   ')
-  await user.click(screen.getByRole('button', { name: 'Join' }))
+  await user.type(screen.getByLabelText('Phone'), '   {Enter}')
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Add a phone number or an email.')
   expect(joinCalls(fetchMock)).toHaveLength(0)
 })
 
@@ -184,7 +260,7 @@ test('coming back to the page does not ask them to join again', async () => {
   renderBillPage()
 
   expect(await screen.findByText("You're in, Brandon.")).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Join!' })).not.toBeInTheDocument()
 })
 
 test('a saved identity for someone not on the bill gets the join form', async () => {
@@ -196,7 +272,7 @@ test('a saved identity for someone not on the bill gets the join form', async ()
 
   renderBillPage()
 
-  expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Join!' })).toBeInTheDocument()
 })
 
 test('a saved identity from another bill does not count', async () => {
@@ -208,7 +284,7 @@ test('a saved identity from another bill does not count', async () => {
 
   renderBillPage()
 
-  expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Join!' })).toBeInTheDocument()
 })
 
 test('damaged saved data gets the join form instead of a crash', async () => {
@@ -217,7 +293,7 @@ test('damaged saved data gets the join form instead of a crash', async () => {
 
   renderBillPage()
 
-  expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Join!' })).toBeInTheDocument()
 })
 
 test('a locked bill can be seen but not joined', async () => {
@@ -227,7 +303,7 @@ test('a locked bill can be seen but not joined', async () => {
 
   expect(await screen.findByText('This bill is locked, so nobody new can join.')).toBeInTheDocument()
   expect(screen.getByText('Burger')).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Join!' })).not.toBeInTheDocument()
 })
 
 test('someone already on a locked bill still counts as in', async () => {
@@ -249,7 +325,7 @@ test('shows when the bill locks just as they join, and keeps what they typed', a
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
   await user.type(screen.getByLabelText('Phone'), '555-0100')
-  await user.click(screen.getByRole('button', { name: 'Join' }))
+  await user.click(screen.getByRole('button', { name: 'Join!' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('bill is not open')
   expect(screen.getByLabelText('Your name')).toHaveValue('Ana')
@@ -264,7 +340,7 @@ test('a second tap while joining does not add them twice', async () => {
 
   await user.type(await screen.findByLabelText('Your name'), 'Ana')
   await user.type(screen.getByLabelText('Phone'), '555-0100')
-  await user.click(screen.getByRole('button', { name: 'Join' }))
+  await user.click(screen.getByRole('button', { name: 'Join!' }))
   const button = await screen.findByRole('button', { name: 'Joining…' })
   expect(button).toBeDisabled()
   await user.click(button)
@@ -281,7 +357,7 @@ test('an unknown or draft bill says it was not found', async () => {
 
   expect(await screen.findByRole('heading', { name: 'Bill not found' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Join!' })).not.toBeInTheDocument()
 })
 
 test('a failed load can be tried again', async () => {

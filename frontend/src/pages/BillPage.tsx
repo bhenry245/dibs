@@ -60,18 +60,27 @@ function BillAmounts({ bill }: { bill: Bill }) {
   )
 }
 
-function JoinForm({
-  shareCode,
+// The first thing someone sees after scanning the QR code, with the bill behind it. It has no close
+// button, because there's nothing to do here until you've joined.
+function JoinModal({
+  bill,
   onJoined,
 }: {
-  shareCode: string
+  bill: Bill
   onJoined: (identity: Identity) => void
 }) {
+  const shareCode = bill.share_code
+  // Every bill has a Captain, because creating one adds them to the crew.
+  const captain = bill.crew.find((member) => member.is_captain)
+  const title = `${bill.restaurant_name ?? `${captain?.name}'s`} bill`
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
-  const [formError, setFormError] = useState<string | null>(null)
+
+  // Greys out the button until the form can succeed. The API still checks everything itself.
+  const hasValidEmail = !email.trim() || /^\S+@\S+\.\S+$/.test(email.trim())
+  const canJoin = Boolean(name.trim() && (phone.trim() || email.trim()) && hasValidEmail)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -103,69 +112,74 @@ function JoinForm({
 
   function handleSubmit(event: SyntheticEvent) {
     event.preventDefault()
-    if (!phone.trim() && !email.trim()) {
-      setFormError('Add a phone number or an email.')
-      return
-    }
-    setFormError(null)
     mutation.mutate()
   }
 
-  const errorMessage = formError ?? (mutation.error && describeError(mutation.error))
-
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-gray-900">Join this bill</h2>
-      <label className="flex flex-col gap-1 text-sm text-gray-700">
-        Your name
-        <input
-          className={INPUT_CLASS}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          autoComplete="name"
-          maxLength={100}
-          required
-        />
-      </label>
-      <p className="text-sm text-gray-600">
-        Add a phone number or an email, so you can get a reminder to pay.
-      </p>
-      <label className="flex flex-col gap-1 text-sm text-gray-700">
-        Phone
-        <input
-          className={INPUT_CLASS}
-          type="tel"
-          value={phone}
-          onChange={(event) => setPhone(event.target.value)}
-          autoComplete="tel"
-          maxLength={32}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm text-gray-700">
-        Email
-        <input
-          className={INPUT_CLASS}
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
-        />
-      </label>
-
-      {errorMessage && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-          {errorMessage}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        className="rounded-lg bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
-        disabled={mutation.isPending}
+    <div className="fixed inset-0 z-10 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="join-title"
+        onSubmit={handleSubmit}
+        className="flex max-h-[90vh] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-lg bg-white p-4"
       >
-        {mutation.isPending ? 'Joining…' : 'Join'}
-      </button>
-    </form>
+        <h2 id="join-title" className="text-xl font-bold break-words text-gray-900">
+          {title}
+        </h2>
+        <p className="text-sm text-gray-600">Join to call dibs on what you had.</p>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Your name
+          <input
+            className={INPUT_CLASS}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoComplete="name"
+            maxLength={100}
+            autoFocus
+            required
+          />
+        </label>
+        <p className="text-sm text-gray-600">
+          Add a phone number or an email, so you can get a reminder to pay.
+        </p>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Phone
+          <input
+            className={INPUT_CLASS}
+            type="tel"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            autoComplete="tel"
+            maxLength={32}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Email
+          <input
+            className={INPUT_CLASS}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+          />
+        </label>
+
+        {mutation.error && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+            {describeError(mutation.error)}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          className="rounded-lg bg-gray-900 px-4 py-3 font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
+          disabled={!canJoin || mutation.isPending}
+        >
+          {mutation.isPending ? 'Joining…' : 'Join!'}
+        </button>
+      </form>
+    </div>
   )
 }
 
@@ -242,7 +256,7 @@ function BillPage() {
       <ItemList bill={bill} />
       <BillAmounts bill={bill} />
       {bill.status === 'OPEN' ? (
-        <JoinForm shareCode={shareCode} onJoined={setIdentity} />
+        <JoinModal bill={bill} onJoined={setIdentity} />
       ) : (
         <p className="text-gray-700">This bill is locked, so nobody new can join.</p>
       )}
