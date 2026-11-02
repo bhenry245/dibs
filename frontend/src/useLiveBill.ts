@@ -22,6 +22,7 @@ export function useLiveBill(shareCode: string): number {
     function refresh() {
       queryClient.invalidateQueries({ queryKey: ['bill', shareCode] })
       queryClient.invalidateQueries({ queryKey: ['totals', shareCode] })
+      queryClient.invalidateQueries({ queryKey: ['preview', shareCode] })
     }
 
     function connect() {

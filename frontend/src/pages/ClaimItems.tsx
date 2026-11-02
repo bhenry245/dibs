@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
@@ -69,21 +69,36 @@ function ClaimRow({
   )
 }
 
+// Shows what you'd owe with what's selected right now. Each change asks the API, which works it out
+// without saving anything, so React still does no money math.
 function YourTotal({
   bill,
-  myId,
+  identity,
   isCaptain,
   pollMs,
+  selectedIds,
+  hasChanges,
 }: {
   bill: Bill
-  myId: string
+  identity: Identity
   isCaptain: boolean
   pollMs: number
+  selectedIds: string[]
+  hasChanges: boolean
 }) {
+  const myId = identity.crewMemberId
   const query = useQuery({
     queryKey: ['totals', bill.share_code],
     queryFn: () => getTotals(bill.share_code),
     refetchInterval: bill.status === 'OPEN' ? pollMs : false,
+  })
+  const preview = useQuery({
+    queryKey: ['preview', bill.share_code, selectedIds],
+    queryFn: () => previewMyClaims(bill.share_code, identity.token, selectedIds),
+    enabled: hasChanges,
+    refetchInterval: pollMs,
+    // Keeps the last total on screen while the next one loads, so numbers don't flicker.
+    placeholderData: keepPreviousData,
   })
 
   if (query.isPending) {
@@ -95,12 +110,29 @@ function YourTotal({
   }
 
   const totals = query.data!
-  const mine = totals.people.find((person) => person.crew_member_id === myId)
-  const unclaimedCount = totals.unclaimed_item_ids.length
+  const saved = totals.people.find((person) => person.crew_member_id === myId)
+  const mine = (hasChanges && preview.data) || saved
+  const unclaimedCount = bill.items.filter(
+    (item) => !selectedIds.includes(item.id) && otherClaimers(item, bill, myId).length === 0,
+  ).length
 
   return (
     <section className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
-      {mine && <TotalSummary person={mine} isCaptain={isCaptain} />}
+      {mine && (
+        <div
+          className={`flex flex-col gap-3 ${hasChanges && preview.isPlaceholderData ? 'opacity-50' : ''}`}
+        >
+          <TotalSummary person={mine} isCaptain={isCaptain} />
+        </div>
+      )}
+      {hasChanges && !preview.isError && (
+        <p className="text-sm text-gray-600">Not saved yet. Call dibs to lock in your items.</p>
+      )}
+      {hasChanges && preview.isError && (
+        <p className="text-sm text-gray-600">
+          Couldn&apos;t update this total, so it may not match what you&apos;ve selected.
+        </p>
+      )}
       {unclaimedCount > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {unclaimedCount === 1 ? '1 item has' : `${unclaimedCount} items have`} no dibs yet.
@@ -138,8 +170,6 @@ function ConfirmDibs({
   const preview = useQuery({
     queryKey: ['preview', shareCode, selectedIds],
     queryFn: () => previewMyClaims(shareCode, identity.token, selectedIds),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
   })
 
   const confirm = useMutation({
@@ -266,6 +296,8 @@ function ClaimItems({
 
   const hasChanges =
     selectedIds.size !== savedIds.length || savedIds.some((id) => !selectedIds.has(id))
+  // Sorted so the same items are the same preview, whatever order they were tapped in.
+  const sortedSelectedIds = [...selectedIds].sort()
 
   function toggle(itemId: string) {
     setSelectedIds((current) => {
@@ -278,6 +310,7 @@ function ClaimItems({
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['bill', bill.share_code] })
     queryClient.invalidateQueries({ queryKey: ['totals', bill.share_code] })
+    queryClient.invalidateQueries({ queryKey: ['preview', bill.share_code] })
   }
 
   return (
@@ -328,10 +361,14 @@ function ClaimItems({
         </div>
       )}
 
-      {hasChanges && (
-        <p className="text-sm text-gray-600">Your total updates after you call dibs.</p>
-      )}
-      <YourTotal bill={bill} myId={myId} isCaptain={isCaptain} pollMs={pollMs} />
+      <YourTotal
+        bill={bill}
+        identity={identity}
+        isCaptain={isCaptain}
+        pollMs={pollMs}
+        selectedIds={sortedSelectedIds}
+        hasChanges={hasChanges}
+      />
       <button
         type="button"
         className="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
@@ -345,7 +382,7 @@ function ClaimItems({
           bill={bill}
           identity={identity}
           isCaptain={isCaptain}
-          selectedIds={[...selectedIds]}
+          selectedIds={sortedSelectedIds}
           onCancel={() => setIsConfirming(false)}
         />
       )}

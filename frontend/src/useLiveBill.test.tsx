@@ -93,6 +93,26 @@ test('a change someone else made appears as soon as the server says so', async (
   expect(await screen.findByRole('button', { name: /Claimed by Brandon/ })).toBeInTheDocument()
 })
 
+test('a live message refreshes a total being previewed', async () => {
+  vi.useRealTimers()
+  const { fetchMock } = stubApi()
+  renderBillPage()
+  const burger = await screen.findByRole('button', { name: /Burger/ })
+  act(() => burger.click())
+  act(() => latestSocket().open())
+  await vi.waitFor(() =>
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/my-claims/preview'))).toBe(true),
+  )
+  const previews = () =>
+    fetchMock.mock.calls.filter(([url]) => url.endsWith('/my-claims/preview')).length
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  const previewsSoFar = previews()
+
+  act(() => latestSocket().receive())
+
+  await vi.waitFor(() => expect(previews()).toBeGreaterThan(previewsSoFar))
+})
+
 test('checks only rarely while connected', async () => {
   const { fetchMock } = stubApi()
   renderBillPage()

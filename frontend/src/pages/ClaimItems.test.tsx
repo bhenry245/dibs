@@ -183,7 +183,6 @@ test('tapping only selects: nothing is saved until you confirm', async () => {
   expect(burger).toHaveAttribute('aria-pressed', 'true')
   expect(burger).toHaveTextContent('You')
   expect(callsTo(fetchMock, '/my-claims')).toHaveLength(0)
-  expect(callsTo(fetchMock, '/my-claims/preview')).toHaveLength(0)
 })
 
 test('tapping again deselects, and Call dibs is off with nothing to change', async () => {
@@ -271,15 +270,92 @@ test('a failed background check keeps your selections', async () => {
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
-test('says the total only updates after calling dibs', async () => {
+test('your total follows what you select, before anything is saved', async () => {
+  const user = userEvent.setup()
+  const { state, fetchMock } = fakeApi()
+  renderAs('ana')
+  expect((await screen.findByText('Your items')).nextSibling).toHaveTextContent('$0.00')
+
+  await user.click(await item(/Burger/))
+  expect(await screen.findByText('$20.18')).toBeInTheDocument()
+  await user.click(await item(/Salad/))
+  expect(await screen.findByText('$30.18')).toBeInTheDocument()
+
+  expect(screen.getByText('Not saved yet. Call dibs to lock in your items.')).toBeInTheDocument()
+  expect(callsTo(fetchMock, '/my-claims')).toHaveLength(0)
+  expect(state.claims.burger).toEqual([])
+})
+
+test('deselecting goes back to your saved total, and the note goes away', async () => {
   const user = userEvent.setup()
   fakeApi()
+  renderAs('ana')
+  const burger = await item(/Burger/)
+
+  await user.click(burger)
+  await screen.findByText('$20.18')
+  await user.click(burger)
+
+  expect(await screen.findByText('$0.18')).toBeInTheDocument()
+  expect(screen.queryByText(/Not saved yet/)).not.toBeInTheDocument()
+})
+
+test('the Captain total moves from unclaimed to their items as they select', async () => {
+  const user = userEvent.setup()
+  fakeApi()
+  renderAs('cap')
+  expect((await screen.findByText('Unclaimed, counts as yours')).nextSibling).toHaveTextContent(
+    '$41.00',
+  )
+  expect(screen.getByText(/3 items have no dibs yet/)).toBeInTheDocument()
+
+  await user.click(await item(/Burger/))
+
+  await vi.waitFor(() =>
+    expect(screen.getByText('Your items').nextSibling).toHaveTextContent('$20.00'),
+  )
+  expect(screen.getByText('Unclaimed, counts as yours').nextSibling).toHaveTextContent('$21.00')
+  expect(screen.getByText(/2 items have no dibs yet/)).toBeInTheDocument()
+})
+
+test('the same items in any order use the same preview', async () => {
+  const user = userEvent.setup()
+  const { fetchMock } = fakeApi()
+  renderAs('ana')
+
+  await user.click(await item(/Salad/))
+  await screen.findByText('$10.18')
+  await user.click(await item(/Burger/))
+  await screen.findByText('$30.18')
+
+  const sent = callsTo(fetchMock, '/my-claims/preview').map(([, init]) => JSON.parse(init.body).item_ids)
+  expect(sent.at(-1)).toEqual(['burger', 'salad'])
+})
+
+test('a failed preview keeps the screen usable and says the total may be off', async () => {
+  const user = userEvent.setup()
+  fakeApi({ previewResponse: () => jsonResponse(500, { detail: 'broken' }) })
   renderAs('ana')
 
   await user.click(await item(/Burger/))
 
-  expect(screen.getByText('Your total updates after you call dibs.')).toBeInTheDocument()
-  expect((await screen.findByText('Your items')).nextSibling).toHaveTextContent('$0.00')
+  expect(await screen.findByText(/Couldn't update this total/)).toBeInTheDocument()
+  expect(await item(/Burger/)).toBeEnabled()
+  expect(callDibs()).toBeEnabled()
+})
+
+test('someone else sharing your selected item updates your preview', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  const { fetchMock } = fakeApi()
+  renderAs('ana')
+  await user.click(await item(/Burger/))
+  await screen.findByText('$20.18')
+  const previewsSoFar = callsTo(fetchMock, '/my-claims/preview').length
+
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(callsTo(fetchMock, '/my-claims/preview').length).toBeGreaterThan(previewsSoFar)
 })
 
 test('never shows a number of shares on the claim screen', async () => {
@@ -339,10 +415,10 @@ test('the modal lists your items and the total from the API', async () => {
   expect(within(modal).queryByText('Salad')).not.toBeInTheDocument()
   expect(await within(modal).findByText('$31.18')).toBeInTheDocument()
 
-  const [, init] = callsTo(fetchMock, '/my-claims/preview')[0]
+  const [, init] = callsTo(fetchMock, '/my-claims/preview').at(-1)!
   expect(init.method).toBe('POST')
   expect(init.headers.Authorization).toBe('Bearer ana')
-  expect(JSON.parse(init.body).item_ids.sort()).toEqual(['burger', 'fries'])
+  expect(JSON.parse(init.body).item_ids).toEqual(['burger', 'fries'])
   expect(callsTo(fetchMock, '/my-claims')).toHaveLength(0)
 })
 
