@@ -152,7 +152,7 @@ function JoinModal({
           />
         </label>
         <p id="contact-hint" className="-mt-2 text-sm text-gray-600">
-          So we can remind you to pay.
+          Only used for this bill. Never shown to anyone at the table.
         </p>
 
         {mutation.error && (

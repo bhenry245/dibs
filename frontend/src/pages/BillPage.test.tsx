@@ -134,6 +134,16 @@ test('name and phone or email are both marked as required', async () => {
   }
 })
 
+test('explains the phone or email honestly, and promises no reminders', async () => {
+  stubApi()
+  renderBillPage()
+
+  const hint = 'Only used for this bill. Never shown to anyone at the table.'
+  expect(await screen.findByText(hint)).toBeInTheDocument()
+  expect(screen.getByLabelText('Phone or email')).toHaveAccessibleDescription(hint)
+  expect(document.body.textContent).not.toMatch(/remind/i)
+})
+
 test.each(['not-an-email', 'ana@example', 'ana @example.com', '12345', 'call me'])(
   'Join! stays greyed out for %s',
   async (contact) => {
