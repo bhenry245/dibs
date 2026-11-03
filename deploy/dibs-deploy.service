@@ -1,0 +1,8 @@
+[Unit]
+Description=Deploy Dibs when main has a new commit that passed CI
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/dibs/deploy/auto-deploy.sh

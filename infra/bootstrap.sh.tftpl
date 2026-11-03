@@ -31,3 +31,8 @@ if [ ! -d /opt/dibs ]; then
   git clone ${repo_url} /opt/dibs
 fi
 /opt/dibs/deploy/deploy.sh
+
+# From now on, the server deploys new commits on main by itself, once their CI passes.
+cp /opt/dibs/deploy/dibs-deploy.service /opt/dibs/deploy/dibs-deploy.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now dibs-deploy.timer

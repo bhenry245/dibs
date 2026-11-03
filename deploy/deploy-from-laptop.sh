@@ -1,5 +1,6 @@
 #!/bin/bash
-# Deploys whatever is on main on GitHub. Run it from the repo, after pushing:
+# The server deploys new commits by itself once their CI passes (see auto-deploy.sh). This is for
+# deploying right now anyway, such as after changing a setting. Run it from the repo:
 #
 #   AWS_PROFILE=dibs deploy/deploy-from-laptop.sh
 #

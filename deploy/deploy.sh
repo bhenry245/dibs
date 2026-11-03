@@ -1,13 +1,14 @@
 #!/bin/bash
-# Runs on the server: gets the latest code from main, writes its settings, and rebuilds and restarts
-# the app. Safe to run again at any time.
+# Runs on the server: gets the code, writes its settings, and rebuilds and restarts the app. Deploys
+# the commit it's given, or the latest on main. Safe to run again at any time.
 set -euo pipefail
 
 REGION=us-east-2
 cd /opt/dibs
 
 git fetch --quiet origin main
-git reset --hard --quiet origin/main
+# A specific commit, so a push that lands mid-deploy can't sneak in before its CI has passed.
+git reset --hard --quiet "${1:-origin/main}"
 
 setting() {
   aws ssm get-parameter --region "$REGION" --name "$1" --with-decryption \
