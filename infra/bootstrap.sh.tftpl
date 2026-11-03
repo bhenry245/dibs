@@ -1,0 +1,33 @@
+#!/bin/bash
+# Sets up a fresh server the first time it starts, then runs the first deploy. Its output goes to
+# /var/log/cloud-init-output.log on the server.
+set -euxo pipefail
+
+dnf install -y docker git
+systemctl enable --now docker
+
+# Building the images needs more memory than the server has, so add 2 GB of swap.
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+fi
+
+# Docker Compose and Buildx, at fixed versions, checked against their published checksums so a
+# tampered download is refused.
+plugins=/usr/local/lib/docker/cli-plugins
+mkdir -p "$plugins"
+curl -fsSL -o "$plugins/docker-compose" \
+  https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-linux-aarch64
+echo "733ec76717ceb59052a9609b9dadfb523b2df8eab57a54212872d10a58078ea2  $plugins/docker-compose" | sha256sum -c -
+curl -fsSL -o "$plugins/docker-buildx" \
+  https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.linux-arm64
+echo "38e890e1a162bfdbf32fbe91404991dc4fc28e55b0de901b34374a061bab4d2c  $plugins/docker-buildx" | sha256sum -c -
+chmod +x "$plugins/docker-compose" "$plugins/docker-buildx"
+
+if [ ! -d /opt/dibs ]; then
+  git clone ${repo_url} /opt/dibs
+fi
+/opt/dibs/deploy/deploy.sh

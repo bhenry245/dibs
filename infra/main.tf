@@ -1,7 +1,7 @@
 # The AWS resources for Dibs. Run Terraform from this folder, with your AWS profile set:
 #
 #   export AWS_PROFILE=dibs
-#   terraform init     # once, and after changing providers
+#   terraform init     # once, and after adding a provider (run it again for random)
 #   terraform plan     # preview the changes
 #   terraform apply    # make them, after you type yes
 
@@ -12,6 +12,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }
@@ -29,7 +33,7 @@ variable "region" {
 variable "allowed_origins" {
   description = "The websites whose browser pages may upload receipt photos."
   type        = list(string)
-  default     = ["http://localhost:5173"]
+  default     = ["http://localhost:5173", "https://dibsapp.co"]
 }
 
 # Receipt photos. Bucket names are shared across all of AWS, so AWS adds a unique ending to this.
