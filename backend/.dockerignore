@@ -1,0 +1,11 @@
+# Secrets and private photos must never end up inside an image.
+.env
+.env.*
+receipt-samples/
+
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+tests/
+scripts/

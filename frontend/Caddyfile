@@ -1,0 +1,27 @@
+# Everything from the internet comes through here. With a real domain as the site address, Caddy gets
+# and renews the HTTPS certificate by itself.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Sent to the API without the /api prefix, the same way Vite does it in development. This also
+	# carries the WebSocket connections.
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	# The React app handles its own pages, so any address that isn't a real file gets index.html.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		# Browsers must not guess file types, and other sites can't put this one in a frame.
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# Don't advertise which server software this is.
+		-Server
+	}
+}

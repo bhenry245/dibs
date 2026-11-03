@@ -1,0 +1,30 @@
+# Runs the production images on your own machine, with a throwaway database, to test them before
+# deploying. Scanning is switched off here, because it needs AWS credentials.
+#
+#   docker compose -p dibs-local-prod -f docker-compose.prod.yml -f docker-compose.local-prod.yml up --build
+#   Then open http://localhost:8088
+#   Remove it all:  docker compose -p dibs-local-prod -f docker-compose.prod.yml -f docker-compose.local-prod.yml down -v
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: dibs
+      POSTGRES_PASSWORD: dibs
+      POSTGRES_DB: dibs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dibs -d dibs"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    env_file: !reset []
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dibs:dibs@db:5432/dibs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    ports: !override
+      - "8088:80"

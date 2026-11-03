@@ -1,0 +1,32 @@
+# How Dibs runs in production. The database is RDS in AWS, so it isn't here. Secrets come from a
+# .env.prod file that the server creates from AWS Parameter Store, and is never committed.
+services:
+  api:
+    image: ${API_IMAGE:-dibs-api}
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      RATE_LIMIT_ENABLED: "true"
+      RECEIPT_DAILY_LIMIT: "20"
+      RECEIPT_UPLOAD_DAILY_LIMIT: "40"
+    # No ports here: only Caddy can reach the API, over Docker's private network.
+
+  web:
+    image: ${WEB_IMAGE:-dibs-web}
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Keeps the HTTPS certificate across restarts, because certificate issuers limit how many
+      # can be requested.
+      - caddy_data:/data
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
